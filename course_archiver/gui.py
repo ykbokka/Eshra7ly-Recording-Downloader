@@ -17,7 +17,7 @@ from app import make_probe, run_pipeline
 from core.errors import ArchiverError, CancelledError
 from core.ffmpeg_pipeline import PipelineConfig
 from core.filenames import sanitize_filename
-from core.stream_classifier import build_plan
+from core.stream_classifier import build_plan, fetch_source_size_bytes
 from core import hls_parser as hls
 from core.tools import find_tools
 from platforms.eshra7ly import START_URL, eshra7lyplatform
@@ -637,7 +637,7 @@ class Eshra7lyGUI(ctk.CTk):
                         if candidate.width and candidate.height else candidate.label
                     )
                     size_label = (
-                        f"~{candidate.estimated_size_bytes / 1073741824:.2f} GB"
+                        f"~{candidate.estimated_size_bytes / 1073741824:.2f} GB estimate"
                         if candidate.estimated_size_bytes else "size unknown"
                     )
                     labels.append(
@@ -649,10 +649,22 @@ class Eshra7lyGUI(ctk.CTk):
                 plan = plans[selected]
             else:
                 plan = plans[0]
+            # Fetch the selected stream's actual segment byte counts before falling back to bitrate math.
+            self._notify_status("Reading source segment sizes…")
+            fetched_size = fetch_source_size_bytes(
+                plan, info["captures"], info["headers"], on_status=self._notify_status,
+            )
+            if fetched_size:
+                plan.estimated_size_bytes = fetched_size
+                plan.size_source = "segments"
+            else:
+                self._notify_status("The server didn't expose every segment size; keeping the bitrate estimate.")
+
             name = sanitize_filename(options["name"] or info.get("title") or "recording")
             estimate = getattr(plan, "estimated_size_bytes", None)
             estimate_text = f"~{estimate / 1073741824:.2f} GB" if estimate else "unavailable"
-            self._notify_status(f"Ready · {name} · {plan.label} · estimated size {estimate_text}")
+            size_label = "fetched source payload" if getattr(plan, "size_source", "bitrate") == "segments" else "estimated size"
+            self._notify_status(f"Ready · {name} · {plan.label} · {size_label} {estimate_text}")
             final_path = run_pipeline(
                 plan, cfg, options["output_dir"], name,
                 keep_temp=options["keep_temp"], on_progress=self._on_progress,
