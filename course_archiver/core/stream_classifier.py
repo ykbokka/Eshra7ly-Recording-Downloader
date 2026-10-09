@@ -166,7 +166,8 @@ def _resource_size(url: str, headers: Dict[str, str]) -> Optional[int]:
 
 def fetch_source_size_bytes(plan: StreamPlan, captures: List[Capture],
                             headers: Optional[Dict[str, str]] = None,
-                            on_status: Optional[Callable[[str], None]] = None) -> Optional[int]:
+                            on_status: Optional[Callable[[str], None]] = None,
+                            cancel_event=None) -> Optional[int]:
     """Sum source HLS segment sizes from HTTP metadata; return None if any size is unavailable.
 
     HLS usually has no single downloadable file or total-size header. This queries segment
@@ -182,6 +183,8 @@ def fetch_source_size_bytes(plan: StreamPlan, captures: List[Capture],
             playlist_urls.append(plan.audio_url)
 
         for playlist_url in dict.fromkeys(playlist_urls):
+            if cancel_event is not None and cancel_event.is_set():
+                return None
             capture = find_capture(captures, playlist_url)
             playlist_text = capture.text if capture else fetch(playlist_url)
             media = hls.parse_media(playlist_text, playlist_url)
@@ -207,6 +210,8 @@ def fetch_source_size_bytes(plan: StreamPlan, captures: List[Capture],
             # issuing thousands of requests that cannot produce a complete fetched total.
             batch_size = 16
             for start in range(0, len(urls_to_query), batch_size):
+                if cancel_event is not None and cancel_event.is_set():
+                    return None
                 batch = urls_to_query[start:start + batch_size]
                 with ThreadPoolExecutor(max_workers=min(16, len(batch))) as pool:
                     pending = {
@@ -222,6 +227,8 @@ def fetch_source_size_bytes(plan: StreamPlan, captures: List[Capture],
                         if sizes[url] is None:
                             failed = True
                 completed = min(start + len(batch), len(urls_to_query))
+                if cancel_event is not None and cancel_event.is_set():
+                    return None
                 if failed:
                     return None
                 if on_status:
