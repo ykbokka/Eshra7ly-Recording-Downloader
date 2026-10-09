@@ -559,7 +559,7 @@ class Eshra7lyGUI(ctk.CTk):
             for capture in info["captures"]:
                 if not hls.looks_like_master(capture.text):
                     continue
-                key = (capture.url.split("?", 1)[0], capture.text)
+                key = (capture.url, capture.text)
                 if key not in seen_masters:
                     seen_masters.add(key)
                     masters.append(capture)
@@ -592,8 +592,8 @@ class Eshra7lyGUI(ctk.CTk):
             unique_plans = []
             seen_plans = set()
             for candidate in plans:
-                key = (candidate.video_url.split("?", 1)[0],
-                       candidate.audio_url.split("?", 1)[0] if candidate.audio_url else None,
+                key = (candidate.video_url,
+                       candidate.audio_url if candidate.audio_url else None,
                        round(candidate.duration))
                 if key not in seen_plans:
                     seen_plans.add(key)
