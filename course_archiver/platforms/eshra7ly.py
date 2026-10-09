@@ -3,13 +3,18 @@
 import getpass
 import os
 import re
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urljoin
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
-os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(PROJECT_DIR / "browser")
+if getattr(sys, "frozen", False) and getattr(sys, "_MEIPASS", None):
+    BROWSER_DIR = Path(sys._MEIPASS) / "browser"
+else:
+    BROWSER_DIR = PROJECT_DIR / "browser"
+os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(BROWSER_DIR)
 
 from playwright.sync_api import sync_playwright
 
