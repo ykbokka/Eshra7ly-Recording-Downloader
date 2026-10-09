@@ -73,6 +73,7 @@ class Eshra7lyGUI(ctk.CTk):
         self.recent_downloads = []
         self.status_text = "Ready when you are."
         self.progress_value = 0.0
+        self.progress_display_value = 0.0
         self.progress_percent = "0%"
         self.animation_phase = 0
         self.progress_label = "Waiting for a recording"
@@ -673,6 +674,19 @@ class Eshra7lyGUI(ctk.CTk):
         """Small, low-cost accent animation; all UI updates stay on Tk's main thread."""
         self.animation_phase = (self.animation_phase + 1) % 4
         logo_colors = [COLORS["blue"], "#6657F5", "#536DFF", "#3478F6"]
+        # Ease the visible bars toward the latest real progress without jumping.
+        delta = self.progress_value - self.progress_display_value
+        if abs(delta) < 0.003:
+            self.progress_display_value = self.progress_value
+        else:
+            self.progress_display_value += delta * 0.34
+        try:
+            if hasattr(self, "home_progress"):
+                self.home_progress.set(self.progress_display_value)
+            if hasattr(self, "download_progress"):
+                self.download_progress.set(self.progress_display_value)
+        except Exception:
+            pass
         try:
             self.logo_tile.configure(fg_color=logo_colors[self.animation_phase])
             if self.busy:
@@ -741,14 +755,56 @@ class Eshra7lyGUI(ctk.CTk):
                                         border_width=1, border_color=COLORS["border"])
         scroll.grid(row=2, column=0, sticky="nsew", padx=22, pady=(0, 14))
         selected = tk.IntVar(value=0)
+        option_cards = []
+
+        def select_option(index):
+            selected.set(index)
+            for card_index, card in enumerate(option_cards):
+                active = card_index == index
+                card.configure(
+                    fg_color=COLORS["blue_soft"] if active else "#FFFFFF",
+                    border_color=COLORS["blue"] if active else COLORS["border"],
+                )
+                card._choice_mark.configure(
+                    text="✓" if active else "○",
+                    text_color=COLORS["blue"] if active else COLORS["muted"],
+                )
+
         for index, label in enumerate(items):
-            ctk.CTkRadioButton(
-                scroll, text=f"{index + 1:02d}   {label}", variable=selected, value=index,
-                font=("SF Pro Text", 11), text_color=COLORS["text"],
-                fg_color=COLORS["blue"], hover_color=COLORS["blue_hover"],
-                border_color="#C7CCD5", radiobutton_width=17, radiobutton_height=17,
-                command=lambda: None,
-            ).pack(fill="x", padx=14, pady=9, anchor="w")
+            card = ctk.CTkFrame(
+                scroll, fg_color="#FFFFFF", corner_radius=13,
+                border_width=1, border_color=COLORS["border"],
+            )
+            card.pack(fill="x", padx=12, pady=5)
+            card.grid_columnconfigure(1, weight=1)
+            badge = ctk.CTkLabel(
+                card, text=f"{index + 1:02d}", width=39, height=39,
+                corner_radius=11, fg_color="#F0F3FA", text_color=COLORS["blue"],
+                font=("SF Pro Text", 11, "bold"),
+            )
+            badge.grid(row=0, column=0, padx=11, pady=10)
+            detail = ctk.CTkLabel(
+                card, text=label, anchor="w", justify="left",
+                font=("SF Pro Text", 11, "bold"), text_color=COLORS["text"],
+                wraplength=440,
+            )
+            detail.grid(row=0, column=1, sticky="ew", padx=(0, 8), pady=10)
+            mark = ctk.CTkLabel(
+                card, text="○", width=24, font=("SF Pro Text", 17, "bold"),
+                text_color=COLORS["muted"],
+            )
+            mark.grid(row=0, column=2, padx=(0, 12))
+            card._choice_mark = mark
+            option_cards.append(card)
+            for widget in (card, badge, detail, mark):
+                widget.bind("<Button-1>", lambda event, i=index: select_option(i))
+            card.bind("<Enter>", lambda event, c=card, i=index: c.configure(
+                border_color=COLORS["blue"] if selected.get() == i else "#C8D2F4"
+            ))
+            card.bind("<Leave>", lambda event, c=card, i=index: c.configure(
+                border_color=COLORS["blue"] if selected.get() == i else COLORS["border"]
+            ))
+        select_option(0)
         buttons = ctk.CTkFrame(dialog, fg_color="transparent")
         buttons.grid(row=3, column=0, sticky="ew", padx=22, pady=(0, 20))
         buttons.grid_columnconfigure(0, weight=1)
@@ -874,12 +930,10 @@ class Eshra7lyGUI(ctk.CTk):
         self.speed_text = speed or "—"
         self.progress_details = f"{size_mb:.1f} MB written" + (f"  ·  {speed}" if speed else "")
         if hasattr(self, "home_progress"):
-            self.home_progress.set(self.progress_value)
             self.home_progress_percent.configure(text=self.progress_percent)
             self.home_progress_title.configure(text=self.progress_label)
             self.home_progress_info.configure(text=self.progress_details)
         if hasattr(self, "download_progress"):
-            self.download_progress.set(self.progress_value)
             self.download_progress_percent.configure(text=self.progress_percent)
             self.download_title.configure(text=self.progress_label)
             self.download_progress_details.configure(text=self.progress_details)
