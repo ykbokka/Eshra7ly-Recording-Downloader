@@ -17,7 +17,13 @@ QUICK START (WINDOWS)
 The first launch opens a clean desktop window. Choose quality and output folder, then click
 "Choose recording". Chromium opens Eshra7ly. If sign-in is needed, enter your credentials in
 the app's local sign-in dialog; the password is not saved. Complete any one-time code or human
-verification in the browser. Course, group, and recording selection are shown in the app.
+verification in the visible browser. Course, group, and recording selection are shown in the app.
+
+BACKGROUND BROWSER MODE
+- Open Settings and enable "Run Chromium in the background" to run the browser headlessly.
+- First sign in with background mode disabled and finish any required verification in the visible browser.
+- If the site later requests a one-time code or human verification, disable background mode and retry.
+- If headless sign-in cannot finish automatically, the app will show an error explaining how to switch back.
 
 COMMAND-LINE MODE
 The original CLI is still available:
