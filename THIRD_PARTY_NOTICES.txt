@@ -1,0 +1,30 @@
+THIRD-PARTY COMPONENTS
+
+Eshra7ly Downloader bundles third-party software for standalone operation.
+
+FFmpeg / FFprobe
+  Distributed from the Windows essentials build published by Gyan Doshi:
+  https://www.gyan.dev/ffmpeg/builds/
+  The upstream FFmpeg license notice for the exact packaged build is embedded
+  with the executable resources as licenses/FFmpeg-LICENSE.txt.
+  FFmpeg licensing depends on the configuration of the upstream build. Review
+  the bundled notice and upstream license information before redistribution.
+
+Playwright Python
+  https://github.com/microsoft/playwright-python
+  The Playwright Python package and bundled browser components are subject to
+  their upstream license and trademark notices.
+
+Chromium
+  https://www.chromium.org/
+  Chromium includes third-party components with their own notices. Upstream
+  Chromium license and third-party notice information is maintained by the
+  Chromium project.
+
+CustomTkinter
+  https://github.com/TomSchimansky/CustomTkinter
+  Subject to its upstream license.
+
+Python, Pillow, and other Python dependencies
+  Each bundled dependency remains subject to its respective upstream license.
+  Source packages and license texts are available from their upstream projects.
