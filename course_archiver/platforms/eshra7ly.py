@@ -115,7 +115,8 @@ def _first_visible(page, selectors: list[str]):
 
 class eshra7lyplatform(baseplatform):
     def __init__(self, browser_exe=None, profile_dir=None, capture_timeout=None, settle=None,
-                 on_status=None, choose_callback=None, login_callback=None, cancel_event=None):
+                 on_status=None, choose_callback=None, login_callback=None, cancel_event=None,
+                 headless=False):
         # Chromium is installed by Playwright into the project-local "browser" directory.
         self.profile_dir = str(profile_dir or config.BROWSER_PROFILE_DIR)
         self.capture_timeout = capture_timeout or config.CAPTURE_TIMEOUT
@@ -124,6 +125,7 @@ class eshra7lyplatform(baseplatform):
         self.choose_callback = choose_callback
         self.login_callback = login_callback
         self.cancel_event = cancel_event
+        self.headless = bool(headless)
 
     def _status(self, message):
         if self.on_status:
@@ -152,6 +154,12 @@ class eshra7lyplatform(baseplatform):
                 course_select.wait_for(state="visible", timeout=7000)
                 return
             except Exception:
+                if self.headless:
+                    raise StreamDetectionError(
+                        "The background browser could not reach the recordings page. Turn off "
+                        "'Run Chromium in the background' in Settings, sign in or complete any verification "
+                        "in the visible browser, then try again."
+                    )
                 raise StreamDetectionError(
                     "The course selector did not appear. The site may have changed its page layout, "
                     "or this account may not have access to the recordings page."
@@ -202,6 +210,11 @@ class eshra7lyplatform(baseplatform):
             course_select.wait_for(state="visible", timeout=15000)
             return
         except Exception:
+            if self.login_callback and self.headless:
+                raise StreamDetectionError(
+                    "Background sign-in did not finish automatically. Turn off 'Run Chromium in the background' "
+                    "in Settings, then retry so you can complete any one-time code or human verification."
+                )
             if self.login_callback:
                 self._status(
                     "Complete any one-time code or human verification in Chromium. "
@@ -325,7 +338,7 @@ class eshra7lyplatform(baseplatform):
         with sync_playwright() as p:
             context = p.chromium.launch_persistent_context(
                 user_data_dir=self.profile_dir,
-                headless=False,
+                headless=self.headless,
             )
             try:
                 page = context.pages[0] if context.pages else context.new_page()
