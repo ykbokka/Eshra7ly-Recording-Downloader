@@ -4,6 +4,8 @@ Never "first .m3u8 wins": the master playlist (if the player requested it) decid
 playlist is video and which is audio. If no master was seen, each media playlist is identified by
 asking ffprobe what streams it contains.
 """
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import re
 from typing import Callable, Dict, List, Optional
 from urllib.parse import urlsplit
 
@@ -119,6 +121,116 @@ def build_plan(captures: List[Capture], quality: str = "best", *, headers: Optio
     return StreamPlan(video.url, audio.url if audio else None, f"{vs.get('height')}p", vs.get("width"), vs.get("height"),
                       vmedia.duration, "ffprobe", vs.get("codec_name", ""), notes)
 
+
+
+def _resource_size(url: str, headers: Dict[str, str]) -> Optional[int]:
+    """Read an object size from HTTP metadata without downloading the segment body."""
+    clean = safe_headers(headers)
+    try:
+        response = requests.head(url, headers=clean, allow_redirects=True, timeout=(4, 8))
+        try:
+            if 200 <= response.status_code < 300:
+                raw = response.headers.get("Content-Length")
+                if raw and raw.strip().isdigit():
+                    return int(raw.strip())
+        finally:
+            response.close()
+    except requests.RequestException:
+        pass
+
+    # Some CDNs reject HEAD. A one-byte range request can expose the full object's
+    # size in Content-Range while avoiding a full segment download.
+    range_headers = dict(clean)
+    range_headers["Range"] = "bytes=0-0"
+    try:
+        response = requests.get(
+            url, headers=range_headers, allow_redirects=True,
+            stream=True, timeout=(4, 8),
+        )
+        try:
+            if response.status_code == 206:
+                match = re.search(r"/(\\d+)\\s*$", response.headers.get("Content-Range", ""))
+                if match:
+                    return int(match.group(1))
+            if response.status_code == 200:
+                raw = response.headers.get("Content-Length")
+                if raw and raw.strip().isdigit():
+                    return int(raw.strip())
+        finally:
+            response.close()
+    except requests.RequestException:
+        pass
+    return None
+
+
+def fetch_source_size_bytes(plan: StreamPlan, captures: List[Capture],
+                            headers: Optional[Dict[str, str]] = None,
+                            on_status: Optional[Callable[[str], None]] = None) -> Optional[int]:
+    """Sum source HLS segment sizes from HTTP metadata; return None if any size is unavailable.
+
+    HLS usually has no single downloadable file or total-size header. This queries segment
+    metadata, not segment bodies, and counts separate audio and video playlists when present.
+    """
+    headers = headers or {}
+    fetch = default_fetch(headers)
+    resources = []
+
+    try:
+        playlist_urls = [plan.video_url]
+        if plan.audio_url:
+            playlist_urls.append(plan.audio_url)
+
+        for playlist_url in dict.fromkeys(playlist_urls):
+            capture = find_capture(captures, playlist_url)
+            playlist_text = capture.text if capture else fetch(playlist_url)
+            media = hls.parse_media(playlist_text, playlist_url)
+            if media.protection:
+                return None
+            init_resources, segments = hls.media_resources(playlist_text, playlist_url)
+            resources.extend(init_resources)
+            resources.extend(segments)
+
+        if not resources:
+            return None
+
+        # Byte ranges already tell us precisely how many bytes belong to a segment.
+        urls_to_query = sorted({url for url, known_length in resources if known_length is None})
+        sizes = {}
+        failed = False
+
+        if on_status:
+            on_status(f"Fetching source size metadata · {len(urls_to_query)} segment resources…")
+
+        if urls_to_query:
+            with ThreadPoolExecutor(max_workers=16) as pool:
+                pending = {
+                    pool.submit(_resource_size, url, headers): url
+                    for url in urls_to_query
+                }
+                for done, future in enumerate(as_completed(pending), 1):
+                    url = pending[future]
+                    try:
+                        sizes[url] = future.result()
+                    except Exception:
+                        sizes[url] = None
+                    if sizes[url] is None:
+                        failed = True
+                    if on_status and (done == len(pending) or done % 50 == 0):
+                        on_status(f"Fetching source size metadata · {done}/{len(pending)} checked…")
+
+        if failed:
+            return None
+
+        total = 0
+        for url, known_length in resources:
+            length = known_length if known_length is not None else sizes.get(url)
+            if length is None:
+                return None
+            total += length
+
+        return total if total > 0 else None
+    except (requests.RequestException, ValueError, StreamDetectionError, OSError):
+        return None
 
 def describe_plan(plan: StreamPlan) -> List[str]:
     rows = [f"quality   : {plan.label}" + (f" ({plan.width}x{plan.height})" if plan.width else ""),
