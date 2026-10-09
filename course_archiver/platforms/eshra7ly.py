@@ -15,7 +15,7 @@ from playwright.sync_api import sync_playwright
 
 import config
 from core import hls_parser as hls
-from core.errors import StreamDetectionError
+from core.errors import CancelledError, StreamDetectionError
 from core.models import Capture, safe_headers
 from core.redact import redact_url
 from .base import baseplatform
@@ -114,11 +114,28 @@ def _first_visible(page, selectors: list[str]):
 
 
 class eshra7lyplatform(baseplatform):
-    def __init__(self, browser_exe=None, profile_dir=None, capture_timeout=None, settle=None):
+    def __init__(self, browser_exe=None, profile_dir=None, capture_timeout=None, settle=None,
+                 on_status=None, choose_callback=None, login_callback=None, cancel_event=None):
         # Chromium is installed by Playwright into the project-local "browser" directory.
         self.profile_dir = str(profile_dir or config.BROWSER_PROFILE_DIR)
         self.capture_timeout = capture_timeout or config.CAPTURE_TIMEOUT
         self.settle = config.CAPTURE_SETTLE if settle is None else settle
+        self.on_status = on_status
+        self.choose_callback = choose_callback
+        self.login_callback = login_callback
+        self.cancel_event = cancel_event
+
+    def _status(self, message):
+        if self.on_status:
+            try:
+                self.on_status(str(message))
+            except Exception:
+                pass
+
+    def _choose(self, title, items):
+        if self.choose_callback:
+            return self.choose_callback(title, items)
+        return _choose(title, items)
 
     def _login_if_needed(self, page) -> None:
         course_select = page.locator("select#course")
@@ -140,11 +157,15 @@ class eshra7lyplatform(baseplatform):
                     "or this account may not have access to the recordings page."
                 )
 
-        print("\nEshra7ly login is required. Credentials are entered locally and are not saved.")
-        username = input("Eshra7ly email / username: ").strip()
-        password_value = getpass.getpass("Eshra7ly password (hidden): ")
+        self._status("Sign-in is required.")
+        if self.login_callback:
+            username, password_value = self.login_callback()
+        else:
+            print("\nEshra7ly login is required. Credentials are entered locally and are not saved.")
+            username = input("Eshra7ly email / username: ").strip()
+            password_value = getpass.getpass("Eshra7ly password (hidden): ")
         if not username or not password_value:
-            raise StreamDetectionError("Login cancelled: username and password are required.")
+            raise CancelledError("Login cancelled.")
 
         user_field = _first_visible(page, [
             "input[type='email']",
@@ -181,6 +202,19 @@ class eshra7lyplatform(baseplatform):
             course_select.wait_for(state="visible", timeout=15000)
             return
         except Exception:
+            if self.login_callback:
+                self._status(
+                    "Complete any one-time code or human verification in Chromium. "
+                    "Waiting for the recordings page…"
+                )
+                try:
+                    course_select.wait_for(state="visible", timeout=120000)
+                    return
+                except Exception:
+                    raise StreamDetectionError(
+                        "Login did not reach the recordings page. Check the sign-in details or complete any site "
+                        "verification in the opened browser, then try again."
+                    )
             print("\nIf Eshra7ly asks for a one-time code or a human verification, complete that step in the opened browser.")
             print("When the recordings page is visible, return here and press ENTER.")
             input()
@@ -209,7 +243,8 @@ class eshra7lyplatform(baseplatform):
         if not courses:
             raise StreamDetectionError("No courses are available for this account on the recordings page.")
 
-        course_index = _choose("COURSES FOUND", courses)
+        self._status(f"Found {len(courses)} courses.")
+        course_index = self._choose("COURSES FOUND", courses)
         selected_course = courses[course_index]
         course_select.select_option(values[course_index])
 
@@ -238,7 +273,8 @@ class eshra7lyplatform(baseplatform):
                 "No recording groups were found for this course. It may have no recordings or the site layout may have changed."
             )
 
-        group_index = _choose("RECORDING GROUPS FOUND", groups)
+        self._status(f"Found {len(groups)} recording groups.")
+        group_index = self._choose("RECORDING GROUPS FOUND", groups)
         selected_group = groups[group_index]
         page.goto(group_hrefs[group_index], wait_until="domcontentloaded")
         page.wait_for_timeout(1200)
@@ -268,7 +304,8 @@ class eshra7lyplatform(baseplatform):
             for date_value, label, _ in dated_recordings
         ]
 
-        recording_index = _choose("RECORDINGS FOUND (OLDEST TO NEWEST)", recordings)
+        self._status(f"Found {len(recordings)} unlocked recordings; dates sorted oldest to newest.")
+        recording_index = self._choose("RECORDINGS FOUND (OLDEST TO NEWEST)", recordings)
         date_value, selected_recording, original_index = dated_recordings[recording_index]
         card = cards.nth(original_index)
         play = card.locator("button.yt-btn.yt-btn-play.play_recording")
@@ -276,8 +313,8 @@ class eshra7lyplatform(baseplatform):
             play = card.locator("button.play_recording")
         if not play.count():
             raise StreamDetectionError("The selected recording has no available Play button.")
-        print(f"\nSelected: {selected_course} / {selected_group} / {selected_recording}")
-        print("Opening the selected recording...")
+        self._status(f"Selected: {selected_course} / {selected_group} / {selected_recording}")
+        self._status("Opening the selected recording…")
         play.first.click()
         return selected_course, selected_group, selected_recording
 
@@ -313,7 +350,7 @@ class eshra7lyplatform(baseplatform):
                         pass
 
                 context.on("response", on_response)
-                print("Opening Eshra7ly recordings...")
+                self._status("Opening Eshra7ly recordings in Chromium…")
                 page.goto(url or START_URL, wait_until="domcontentloaded")
                 self._login_if_needed(page)
                 course, group, recording = self._select_recording(page)
@@ -321,6 +358,8 @@ class eshra7lyplatform(baseplatform):
                 deadline = time.monotonic() + self.capture_timeout
                 seen_master_at = None
                 while time.monotonic() < deadline:
+                    if self.cancel_event is not None and self.cancel_event.is_set():
+                        raise CancelledError("cancelled")
                     page.wait_for_timeout(400)
                     if any(hls.looks_like_master(c.text) for c in captures):
                         seen_master_at = seen_master_at or time.monotonic()
