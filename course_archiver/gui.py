@@ -182,10 +182,11 @@ class Eshra7lyGUI(ctk.CTk):
     def _show_page(self, page):
         self.active_page = page
         for attr in (
-            "home_status", "home_progress_title", "home_progress", "home_progress_info",
-            "activity_box", "start_button", "cancel_button", "quality_menu", "audio_menu",
-            "name_entry", "output_entry", "download_title", "download_page_status",
-            "download_progress", "download_progress_details",
+            "home_status", "home_progress_title", "home_progress", "home_progress_percent",
+            "home_progress_info", "activity_box", "start_button", "cancel_button",
+            "quality_menu", "audio_menu", "name_entry", "output_entry", "download_title",
+            "download_page_status", "download_progress", "download_progress_percent",
+            "download_progress_details",
         ):
             if hasattr(self, attr):
                 delattr(self, attr)
