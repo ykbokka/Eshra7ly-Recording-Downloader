@@ -665,6 +665,10 @@ class Eshra7lyGUI(ctk.CTk):
             estimate_text = f"~{estimate / 1073741824:.2f} GB" if estimate else "unavailable"
             size_label = "fetched source payload" if getattr(plan, "size_source", "bitrate") == "segments" else "estimated size"
             self._notify_status(f"Ready · {name} · {plan.label} · {size_label} {estimate_text}")
+            confirmed = self._call_ui(lambda: self._confirm_download_dialog(name, plan))
+            if not confirmed:
+                raise CancelledError("download cancelled before starting")
+            self._notify_status("Starting download…")
             final_path = run_pipeline(
                 plan, cfg, options["output_dir"], name,
                 keep_temp=options["keep_temp"], on_progress=self._on_progress,
@@ -747,6 +751,85 @@ class Eshra7lyGUI(ctk.CTk):
 
     def _login_from_browser(self):
         return self._call_ui(self._login_dialog)
+
+    def _confirm_download_dialog(self, name, plan):
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Ready to download")
+        dialog.geometry("540x390")
+        dialog.resizable(False, False)
+        dialog.configure(fg_color=COLORS["app"])
+        dialog.transient(self)
+        dialog.grab_set()
+        dialog.grid_columnconfigure(0, weight=1)
+
+        fetched = getattr(plan, "size_source", "bitrate") == "segments"
+        size_bytes = getattr(plan, "estimated_size_bytes", None)
+        size_text = f"~{size_bytes / 1073741824:.2f} GB" if size_bytes else "Size unavailable"
+        size_caption = (
+            "Summed from source segment size metadata"
+            if fetched else "Estimate based on the stream's bitrate"
+        )
+        duration_seconds = max(0, int(round(plan.duration)))
+        hours, remainder = divmod(duration_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        duration_text = f"{hours}h {minutes:02d}m {seconds:02d}s" if hours else f"{minutes}m {seconds:02d}s"
+        resolution = (
+            f"{plan.label} · {plan.width}×{plan.height}"
+            if plan.width and plan.height else plan.label
+        )
+
+        self._label(dialog, "Ready to download?", 22, COLORS["text"], True).grid(
+            row=0, column=0, sticky="w", padx=26, pady=(24, 6))
+        self._label(dialog, name, 12, COLORS["muted"], wraplength=480, justify="left").grid(
+            row=1, column=0, sticky="w", padx=26, pady=(0, 17))
+
+        size_card = ctk.CTkFrame(
+            dialog, fg_color="#FFFFFF", corner_radius=16,
+            border_width=1, border_color=COLORS["border"],
+        )
+        size_card.grid(row=2, column=0, sticky="ew", padx=24)
+        self._label(size_card, size_text, 30, COLORS["blue"], True).pack(
+            anchor="w", padx=18, pady=(16, 2))
+        self._label(size_card, size_caption, 10, COLORS["muted"]).pack(
+            anchor="w", padx=18, pady=(0, 15))
+
+        self._label(
+            dialog, f"Quality: {resolution}    ·    Duration: {duration_text}",
+            11, COLORS["text"],
+        ).grid(row=3, column=0, sticky="w", padx=26, pady=(14, 5))
+        self._label(
+            dialog,
+            "The finished MKV can differ slightly from the source total. "
+            "Temporary video/audio files also need storage while the file is assembled.",
+            10, COLORS["muted"], wraplength=480, justify="left",
+        ).grid(row=4, column=0, sticky="w", padx=26, pady=(0, 14))
+
+        result = {"confirmed": False}
+
+        def finish(confirmed):
+            result["confirmed"] = confirmed
+            try:
+                dialog.grab_release()
+            except Exception:
+                pass
+            dialog.destroy()
+
+        buttons = ctk.CTkFrame(dialog, fg_color="transparent")
+        buttons.grid(row=5, column=0, sticky="e", padx=24, pady=(0, 20))
+        ctk.CTkButton(
+            buttons, text="Cancel", height=40, width=112, corner_radius=11,
+            fg_color="#E9ECF2", hover_color="#DDE2EB", text_color=COLORS["text"],
+            command=lambda: finish(False),
+        ).pack(side="left", padx=(0, 9))
+        ctk.CTkButton(
+            buttons, text="Start download", height=40, width=150, corner_radius=11,
+            fg_color=COLORS["blue"], hover_color=COLORS["blue_hover"],
+            font=("SF Pro Text", 12, "bold"), command=lambda: finish(True),
+        ).pack(side="left")
+
+        dialog.protocol("WM_DELETE_WINDOW", lambda: finish(False))
+        self.wait_window(dialog)
+        return result["confirmed"]
 
     def _call_ui(self, callback):
         event = threading.Event()
