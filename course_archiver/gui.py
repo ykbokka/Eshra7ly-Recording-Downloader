@@ -23,8 +23,7 @@ from core.tools import find_tools
 from platforms.eshra7ly import START_URL, eshra7lyplatform
 
 
-ROOT = Path(__file__).resolve().parent
-PREFS_FILE = ROOT / "gui_settings.json"
+PREFS_FILE = config.APP_DATA_DIR / "gui_settings.json"
 
 COLORS = {
     "app": "#F2F5FB",
@@ -46,7 +45,7 @@ COLORS = {
 
 def _default_prefs():
     return {
-        "output_dir": str(ROOT / "downloads"),
+        "output_dir": config.DEFAULT_OUTPUT_DIR,
         "quality": "best",
         "audio": "copy",
         "capture_timeout": 300,
@@ -101,6 +100,7 @@ class Eshra7lyGUI(ctk.CTk):
 
     def _save_prefs(self):
         try:
+            PREFS_FILE.parent.mkdir(parents=True, exist_ok=True)
             with PREFS_FILE.open("w", encoding="utf-8") as handle:
                 json.dump(self.prefs, handle, indent=2, ensure_ascii=False)
         except OSError as exc:
@@ -495,7 +495,7 @@ class Eshra7lyGUI(ctk.CTk):
 
     def _browse_output(self, target=None):
         current = target.get() if target else getattr(self, "output_entry", None).get()
-        selected = filedialog.askdirectory(initialdir=current if os.path.isdir(current) else str(ROOT))
+        selected = filedialog.askdirectory(initialdir=current if os.path.isdir(current) else str(Path.home()))
         if selected:
             widget = target if target else self.output_entry
             widget.delete(0, "end")
@@ -503,7 +503,7 @@ class Eshra7lyGUI(ctk.CTk):
 
     def _save_settings_from_page(self):
         self.prefs.update({
-            "output_dir": self.settings_output.get().strip() or str(ROOT / "downloads"),
+            "output_dir": self.settings_output.get().strip() or config.DEFAULT_OUTPUT_DIR,
             "quality": self.settings_quality.get(),
             "audio": "flac" if self.settings_audio.get().startswith("FLAC") else "copy",
             "keep_temp": bool(self.keep_temp_var.get()),
@@ -522,7 +522,7 @@ class Eshra7lyGUI(ctk.CTk):
     def _start_download(self):
         if self.busy:
             return
-        output_dir = self.output_entry.get().strip() or str(ROOT / "downloads")
+        output_dir = self.output_entry.get().strip() or config.DEFAULT_OUTPUT_DIR
         try:
             os.makedirs(output_dir, exist_ok=True)
         except OSError as exc:
