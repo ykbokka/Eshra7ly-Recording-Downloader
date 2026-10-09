@@ -52,19 +52,28 @@ jobs:
 
           $ffmpeg = Get-ChildItem -Path $extract -Filter "ffmpeg.exe" -Recurse | Select-Object -First 1
           $ffprobe = Get-ChildItem -Path $extract -Filter "ffprobe.exe" -Recurse | Select-Object -First 1
-          $license = Get-ChildItem -Path $extract -Filter "LICENSE.txt" -Recurse | Select-Object -First 1
-          if (-not $ffmpeg -or -not $ffprobe -or -not $license) {
-            throw "FFmpeg archive is missing ffmpeg.exe, ffprobe.exe, or LICENSE.txt."
+          if (-not $ffmpeg -or -not $ffprobe) {
+            throw "FFmpeg archive is missing ffmpeg.exe or ffprobe.exe."
+          }
+          $licensePath = Join-Path $ffmpeg.Directory.Parent.FullName "LICENSE.txt"
+          if (-not (Test-Path $licensePath)) {
+            throw "The FFmpeg package root is missing LICENSE.txt."
           }
 
           Copy-Item $ffmpeg.FullName "build-tools\ffmpeg.exe" -Force
           Copy-Item $ffprobe.FullName "build-tools\ffprobe.exe" -Force
-          Copy-Item $license.FullName "build-tools\FFmpeg-LICENSE.txt" -Force
+          Copy-Item $licensePath "build-tools\FFmpeg-LICENSE.txt" -Force
 
           & "build-tools\ffmpeg.exe" -hide_banner -version
           if ($LASTEXITCODE -ne 0) { throw "Bundled FFmpeg did not start." }
           & "build-tools\ffprobe.exe" -hide_banner -version
           if ($LASTEXITCODE -ne 0) { throw "Bundled FFprobe did not start." }
+
+      - name: Check Python source syntax
+        shell: pwsh
+        run: |
+          python -m compileall -q course_archiver
+          if ($LASTEXITCODE -ne 0) { throw "Python syntax check failed." }
 
       - name: Build one-file GUI executable
         shell: pwsh
