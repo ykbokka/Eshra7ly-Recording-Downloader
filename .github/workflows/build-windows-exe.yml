@@ -37,7 +37,7 @@ jobs:
           $browserPath = Join-Path $env:GITHUB_WORKSPACE "course_archiver\browser"
           New-Item -ItemType Directory -Force -Path $browserPath | Out-Null
           $env:PLAYWRIGHT_BROWSERS_PATH = $browserPath
-          python -m playwright install chromium
+          python -m playwright install --only-shell chromium
           if ($LASTEXITCODE -ne 0) { throw "Playwright Chromium installation failed." }
 
       - name: Download and stage FFmpeg
