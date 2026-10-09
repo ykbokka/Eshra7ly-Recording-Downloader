@@ -1,7 +1,10 @@
 import argparse
+import ctypes
 import os
 import shutil
 import sys
+import tempfile
+from pathlib import Path
 
 import config
 from core.errors import ArchiverError, CancelledError
@@ -25,6 +28,28 @@ def make_probe(tools, headers, cfg):
     return probe
 
 
+def _set_hidden(path):
+    """Mark app-managed temporary paths hidden on Windows; harmless elsewhere."""
+    if os.name == "nt":
+        try:
+            attrs = ctypes.windll.kernel32.GetFileAttributesW(str(path))
+            if attrs != -1:
+                ctypes.windll.kernel32.SetFileAttributesW(str(path), attrs | 0x2)
+        except Exception:
+            pass
+
+
+def _format_bytes(size):
+    if size is None:
+        return "size unavailable"
+    value = float(size)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if value < 1024 or unit == "TB":
+            return f"{int(value)} B" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.1f} TB"
+
+
 def run_pipeline(plan, cfg, out_dir, name, *, keep_temp=False, force=False,
                  on_progress=None, on_status=None):
     def status(message):
@@ -38,6 +63,20 @@ def run_pipeline(plan, cfg, out_dir, name, *, keep_temp=False, force=False,
     progress_args = {"on_progress": on_progress} if on_progress else {}
     os.makedirs(out_dir, exist_ok=True)
     final = os.path.join(out_dir, name + ".mkv")
+    estimate = getattr(plan, "estimated_size_bytes", None)
+    if estimate:
+        # Soft-reserve the expected space by preflighting with a safety margin.
+        required = int(estimate * 1.15) + 256 * 1024 * 1024
+        free = shutil.disk_usage(out_dir).free
+        status(f"Estimated final size: about {_format_bytes(estimate)} · checking disk space…")
+        if free < required:
+            raise ArchiverError(
+                f"Not enough free disk space for this recording. Estimated size: {_format_bytes(estimate)}; "
+                f"free: {_format_bytes(free)}. Keep at least {_format_bytes(required)} free and retry."
+            )
+        status(f"Space check passed · about {_format_bytes(estimate)} expected, {_format_bytes(free)} free.")
+    else:
+        status("Recording size estimate unavailable for this stream; no reliable bitrate was provided.")
     if os.path.exists(final) and not force:
         try:
             status("Checking existing output file…")
@@ -48,8 +87,12 @@ def run_pipeline(plan, cfg, out_dir, name, *, keep_temp=False, force=False,
         except ArchiverError as e:
             print(f"existing file is not valid ({e}); downloading again")
 
-    tmp = os.path.join(out_dir, f".tmp_{name}")
-    os.makedirs(tmp, exist_ok=True)
+    # Keep intermediate .part files inside a hidden app-local staging directory.
+    temp_root = Path(__file__).resolve().parent / ".eshra7ly_temp"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    _set_hidden(temp_root)
+    tmp = tempfile.mkdtemp(prefix="job_", dir=str(temp_root))
+    _set_hidden(tmp)
     video, audio = os.path.join(tmp, "video.mkv"), os.path.join(tmp, "audio.mka")
     try:
         status("Downloading video stream…")
@@ -68,10 +111,10 @@ def run_pipeline(plan, cfg, out_dir, name, *, keep_temp=False, force=False,
         mux_streams(cfg, video, audio if plan.audio_url else None, final, plan.duration)
         info = validate_output(cfg, final, plan.duration, need_audio=True)
     except CancelledError:
-        print(f"\ncancelled. Partial files kept in {tmp} (safe to delete).")
+        print("\ncancelled. Partial files remain in the hidden app temp folder.")
         raise
     except ArchiverError:
-        print(f"\nfailed. Temporary files kept in {tmp} for inspection.")
+        print("\nfailed. Temporary files remain in the hidden app temp folder for inspection.")
         raise
     if not keep_temp:
         shutil.rmtree(tmp, ignore_errors=True)
