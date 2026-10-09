@@ -95,9 +95,18 @@ if "%NEED_FFMPEG%"=="0" goto :ffmpeg_ready
 set "FFMPEG_WORK=%TEMP%\Eshra7ly_FFmpeg_%RANDOM%_%RANDOM%"
 set "FFMPEG_ZIP=%FFMPEG_WORK%.zip"
 mkdir "%FFMPEG_WORK%" 2>nul
-curl.exe -fL --retry 2 --retry-delay 2 "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -o "%FFMPEG_ZIP%"
+
+rem GitHub-hosted shared build is smaller than the full static archive.
+rem Abort a stalled mirror if throughput stays below 50 KB/s for 30 seconds.
+echo Trying GitHub-hosted FFmpeg build (about 85 MiB)...
+curl.exe -fL --retry 2 --retry-delay 2 --connect-timeout 20 --speed-limit 50000 --speed-time 30 "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip" -o "%FFMPEG_ZIP%"
 if errorlevel 1 (
-  set "FAIL_REASON=Could not download FFmpeg. Check your internet connection and retry."
+  echo GitHub download failed or was too slow. Trying the alternate FFmpeg mirror...
+  del /q "%FFMPEG_ZIP%" 2>nul
+  curl.exe -fL --retry 1 --retry-delay 2 --connect-timeout 20 --speed-limit 50000 --speed-time 30 "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -o "%FFMPEG_ZIP%"
+)
+if errorlevel 1 (
+  set "FAIL_REASON=Could not download FFmpeg from either mirror. Check the connection and retry."
   goto :fail
 )
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath '%FFMPEG_ZIP%' -DestinationPath '%FFMPEG_WORK%' -Force"
