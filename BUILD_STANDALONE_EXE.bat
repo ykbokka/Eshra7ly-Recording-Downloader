@@ -145,6 +145,16 @@ if exist "%BUILD_TOOLS%\ffmpeg.exe" if exist "%BUILD_TOOLS%\ffprobe.exe" if exis
 )
 if "%NEED_FFMPEG%"=="0" goto :ffmpeg_ready
 
+rem Python extracts the executables directly from the ZIP into build-tools.
+rem This avoids the fragile batch FOR /R discovery/copy steps that were failing.
+"%VENV_PY%" "%ROOT%\prepare_ffmpeg_bundle.py" --destination "%BUILD_TOOLS%" --temp-dir "%TEMP%"
+if errorlevel 1 (
+  set "FAIL_REASON=The FFmpeg bundler failed. Read the detailed diagnostic above."
+  goto :fail
+)
+
+:ffmpeg_ready
+
 rem Reuse an extracted archive left behind by the previous failed build, if one exists.
 set "FFMPEG_WORK="
 set "FFMPEG_FILE="
@@ -387,18 +397,3 @@ echo ============================================================
 echo.
 pause
 exit /b 1
-
-:check_cached_ffmpeg
-set "CANDIDATE_FF="
-set "CANDIDATE_FP="
-for /r "%~1" %%F in (ffmpeg.exe) do if not defined CANDIDATE_FF set "CANDIDATE_FF=%%F"
-for /r "%~1" %%F in (ffprobe.exe) do if not defined CANDIDATE_FP set "CANDIDATE_FP=%%F"
-if defined CANDIDATE_FF if defined CANDIDATE_FP (
-  set "REUSED_FFMPEG_WORK=%~1"
-  set "FFMPEG_FILE=%CANDIDATE_FF%"
-  set "FFPROBE_FILE=%CANDIDATE_FP%"
-) else (
-  set "FFMPEG_FILE="
-  set "FFPROBE_FILE="
-)
-exit /b
