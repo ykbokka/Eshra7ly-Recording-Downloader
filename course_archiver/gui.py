@@ -235,7 +235,8 @@ class Eshra7lyGUI(ctk.CTk):
 
         fields = ctk.CTkFrame(setup, fg_color="transparent")
         fields.grid(row=2, column=0, sticky="ew", padx=22)
-        fields.grid_columnconfigure(0, weight=1)\n        fields.grid_columnconfigure(1, weight=1)
+        fields.grid_columnconfigure(0, weight=1)
+        fields.grid_columnconfigure(1, weight=1)
         self._label(fields, "VIDEO QUALITY", 9, COLORS["muted"], True).grid(row=0, column=0, sticky="w")
         self._label(fields, "AUDIO TRACK", 9, COLORS["muted"], True).grid(row=0, column=1, sticky="w", padx=(13, 0))
         self.quality_menu = ctk.CTkOptionMenu(
