@@ -149,7 +149,7 @@ def _resource_size(url: str, headers: Dict[str, str]) -> Optional[int]:
         )
         try:
             if response.status_code == 206:
-                match = re.search(r"/(\\d+)\\s*$", response.headers.get("Content-Range", ""))
+                match = re.search(r"/(\d+)\s*$", response.headers.get("Content-Range", ""))
                 if match:
                     return int(match.group(1))
             if response.status_code == 200:
