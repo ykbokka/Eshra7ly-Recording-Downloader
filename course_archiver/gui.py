@@ -76,13 +76,14 @@ class Eshra7lyGUI(ctk.CTk):
         self.progress_display_value = 0.0
         self.progress_percent = "0%"
         self.animation_phase = 0
+        self.animation_ticks = 0
         self.progress_label = "Waiting for a recording"
         self.progress_details = "Your next lesson will appear here."
         self.speed_text = "—"
         self._build_shell()
         self._show_page("Home")
         self.after(45, self._pump_jobs)
-        self.after(420, self._animate_ui)
+        self.after(40, self._animate_ui)
 
     def _load_prefs(self):
         prefs = _default_prefs()
@@ -672,7 +673,9 @@ class Eshra7lyGUI(ctk.CTk):
 
     def _animate_ui(self):
         """Small, low-cost accent animation; all UI updates stay on Tk's main thread."""
-        self.animation_phase = (self.animation_phase + 1) % 4
+        self.animation_ticks += 1
+        if self.animation_ticks % 10 == 0:
+            self.animation_phase = (self.animation_phase + 1) % 4
         logo_colors = [COLORS["blue"], "#6657F5", "#536DFF", "#3478F6"]
         # Ease the visible bars toward the latest real progress without jumping.
         delta = self.progress_value - self.progress_display_value
