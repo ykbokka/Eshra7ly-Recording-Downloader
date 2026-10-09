@@ -25,12 +25,24 @@ def make_probe(tools, headers, cfg):
     return probe
 
 
-def run_pipeline(plan, cfg, out_dir, name, *, keep_temp=False, force=False):
+def run_pipeline(plan, cfg, out_dir, name, *, keep_temp=False, force=False,
+                 on_progress=None, on_status=None):
+    def status(message):
+        print(message)
+        if on_status:
+            try:
+                on_status(message)
+            except Exception:
+                pass
+
+    progress_args = {"on_progress": on_progress} if on_progress else {}
     os.makedirs(out_dir, exist_ok=True)
     final = os.path.join(out_dir, name + ".mkv")
     if os.path.exists(final) and not force:
         try:
+            status("Checking existing output file…")
             info = validate_output(cfg, final, plan.duration, need_audio=True)
+            status(f"Already downloaded and valid · {os.path.basename(final)}")
             print(f"already downloaded and valid: {final}  ({info['duration']:.0f}s)")
             return final
         except ArchiverError as e:
@@ -40,14 +52,18 @@ def run_pipeline(plan, cfg, out_dir, name, *, keep_temp=False, force=False):
     os.makedirs(tmp, exist_ok=True)
     video, audio = os.path.join(tmp, "video.mkv"), os.path.join(tmp, "audio.mka")
     try:
+        status("Downloading video stream…")
         print("\n[1/3] video (ffmpeg stream copy)")
-        download_video(cfg, plan, video)
+        download_video(cfg, plan, video, **progress_args)
         if plan.audio_url:
             how = "FLAC transcode of the AAC source" if cfg.audio_mode == "flac" else "original AAC kept as-is"
+            status("Downloading audio track…")
             print(f"[2/3] audio ({how})")
-            download_audio(cfg, plan, audio)
+            download_audio(cfg, plan, audio, **progress_args)
         else:
+            status("Audio is already included in the video stream.")
             print("[2/3] audio: already inside the video stream")
+        status("Muxing and validating the final file…")
         print("[3/3] muxing + validating")
         mux_streams(cfg, video, audio if plan.audio_url else None, final, plan.duration)
         info = validate_output(cfg, final, plan.duration, need_audio=True)
@@ -59,6 +75,7 @@ def run_pipeline(plan, cfg, out_dir, name, *, keep_temp=False, force=False):
         raise
     if not keep_temp:
         shutil.rmtree(tmp, ignore_errors=True)
+    status(f"Completed · {final}")
     print(f"\ndone: {final}")
     print(f"  {info['video']} {info['width']}x{info['height']} + {info['audio']}, {info['duration']:.0f}s, {info['size']/1048576:.1f} MB")
     return final
