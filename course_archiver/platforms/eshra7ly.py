@@ -202,6 +202,19 @@ class eshra7lyplatform(baseplatform):
             course_select.wait_for(state="visible", timeout=15000)
             return
         except Exception:
+            if self.login_callback:
+                self._status(
+                    "Complete any one-time code or human verification in Chromium. "
+                    "Waiting for the recordings page…"
+                )
+                try:
+                    course_select.wait_for(state="visible", timeout=120000)
+                    return
+                except Exception:
+                    raise StreamDetectionError(
+                        "Login did not reach the recordings page. Check the sign-in details or complete any site "
+                        "verification in the opened browser, then try again."
+                    )
             print("\nIf Eshra7ly asks for a one-time code or a human verification, complete that step in the opened browser.")
             print("When the recordings page is visible, return here and press ENTER.")
             input()
