@@ -116,7 +116,7 @@ def _first_visible(page, selectors: list[str]):
 class eshra7lyplatform(baseplatform):
     def __init__(self, browser_exe=None, profile_dir=None, capture_timeout=None, settle=None,
                  on_status=None, choose_callback=None, login_callback=None, cancel_event=None,
-                 headless=False):
+                 headless=True):
         # Chromium is installed by Playwright into the project-local "browser" directory.
         self.profile_dir = str(profile_dir or config.BROWSER_PROFILE_DIR)
         self.capture_timeout = capture_timeout or config.CAPTURE_TIMEOUT
@@ -125,7 +125,7 @@ class eshra7lyplatform(baseplatform):
         self.choose_callback = choose_callback
         self.login_callback = login_callback
         self.cancel_event = cancel_event
-        self.headless = bool(headless)
+        # Always use headless Chromium: no browser window or taskbar button.\n        self.headless = True
 
     def _status(self, message):
         if self.on_status:
@@ -156,9 +156,9 @@ class eshra7lyplatform(baseplatform):
             except Exception:
                 if self.headless:
                     raise StreamDetectionError(
-                        "The background browser could not reach the recordings page. Turn off "
-                        "'Run Chromium in the background' in Settings, sign in or complete any verification "
-                        "in the visible browser, then try again."
+                        "The invisible browser could not reach the recordings page. Check that this account "
+                        "is already signed in and that no one-time code or human verification is required. "
+                        "The browser is intentionally kept invisible."
                     )
                 raise StreamDetectionError(
                     "The course selector did not appear. The site may have changed its page layout, "
@@ -212,8 +212,9 @@ class eshra7lyplatform(baseplatform):
         except Exception:
             if self.login_callback and self.headless:
                 raise StreamDetectionError(
-                    "Background sign-in did not finish automatically. Turn off 'Run Chromium in the background' "
-                    "in Settings, then retry so you can complete any one-time code or human verification."
+                    "Invisible-browser sign-in did not finish automatically. Check that your saved browser "
+                    "session is still valid. If Eshra7ly requires a one-time code or human verification, "
+                    "the session may need to be renewed before using invisible mode."
                 )
             if self.login_callback:
                 self._status(
@@ -338,7 +339,7 @@ class eshra7lyplatform(baseplatform):
         with sync_playwright() as p:
             context = p.chromium.launch_persistent_context(
                 user_data_dir=self.profile_dir,
-                headless=self.headless,
+                headless=True,
             )
             try:
                 page = context.pages[0] if context.pages else context.new_page()
