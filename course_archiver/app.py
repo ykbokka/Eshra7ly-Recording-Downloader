@@ -83,7 +83,7 @@ def main(argv=None):
     try:
         tools = find_tools(args.ffmpeg)
         print("ffmpeg:", tools.version)
-        url = args.url or input("drop the course url here gng: ").strip()
+        url = args.url or "https://eshra7ly.net/student/recordings"
         info = eshra7lyplatform(capture_timeout=args.capture_timeout).extract_media_info(url)
         cfg = PipelineConfig(tools, info["headers"], audio_mode=args.audio, debug=args.debug)
         plan = build_plan(info["captures"], args.quality, headers=info["headers"], probe=make_probe(tools, info["headers"], cfg))
