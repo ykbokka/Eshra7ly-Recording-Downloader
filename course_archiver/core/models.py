@@ -30,3 +30,4 @@ class StreamPlan:
     source: str                       # "master" | "ffprobe"
     video_codecs: str = ""
     notes: List[str] = field(default_factory=list)
+    estimated_size_bytes: Optional[int] = None  # approximate HLS bitrate × duration
