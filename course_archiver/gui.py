@@ -653,6 +653,7 @@ class Eshra7lyGUI(ctk.CTk):
             self._notify_status("Reading source segment sizes…")
             fetched_size = fetch_source_size_bytes(
                 plan, info["captures"], info["headers"], on_status=self._notify_status,
+                cancel_event=self.stop_event,
             )
             if self.stop_event.is_set():
                 raise CancelledError("cancelled")
