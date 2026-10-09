@@ -30,4 +30,5 @@ class StreamPlan:
     source: str                       # "master" | "ffprobe"
     video_codecs: str = ""
     notes: List[str] = field(default_factory=list)
-    estimated_size_bytes: Optional[int] = None  # approximate HLS bitrate × duration
+    estimated_size_bytes: Optional[int] = None  # source payload size if fetched, otherwise bitrate estimate
+    size_source: str = "bitrate"  # "segments" when fetched from segment HTTP metadata
