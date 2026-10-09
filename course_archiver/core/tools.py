@@ -41,6 +41,15 @@ def find_tools(configured: Optional[str] = None) -> Tools:
                 ff, fp = a, b
                 break
     if not ff:
+        # In a PyInstaller one-file build, bundled FFmpeg lives inside the extracted bundle.
+        bundle_root = getattr(sys, "_MEIPASS", None)
+        if bundle_root:
+            base = os.path.join(bundle_root, "tools")
+            a = os.path.join(base, "ffmpeg" + exe)
+            b = os.path.join(base, "ffprobe" + exe)
+            if os.path.isfile(a) and os.path.isfile(b):
+                ff, fp = a, b
+    if not ff:
         ff, fp = shutil.which("ffmpeg"), shutil.which("ffprobe")
     if not ff or not fp:
         raise FfmpegMissingError(HELP)
