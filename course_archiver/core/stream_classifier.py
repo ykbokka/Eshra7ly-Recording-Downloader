@@ -78,7 +78,13 @@ def build_plan(captures: List[Capture], quality: str = "best", *, headers: Optio
             amedia = _media_for(audio.url, captures, fetch)
             if abs(amedia.duration - vmedia.duration) > max(3.0, 0.02 * vmedia.duration):
                 notes.append(f"audio ({amedia.duration:.0f}s) and video ({vmedia.duration:.0f}s) lengths differ")
-        estimate = int(vmedia.duration * variant.bandwidth / 8 * 0.88) if variant.bandwidth > 0 else None
+        # BANDWIDTH is the peak rate, which can greatly exaggerate the size of a long VOD.
+        # Prefer AVERAGE-BANDWIDTH when the playlist provides it. Otherwise, use a conservative
+        # 65% of the peak as a rough fallback; the UI still labels this as an estimate.
+        estimate_rate = variant.average_bandwidth
+        if not estimate_rate and variant.bandwidth > 0:
+            estimate_rate = int(variant.bandwidth * 0.65)
+        estimate = int(vmedia.duration * estimate_rate / 8 * 1.05) if estimate_rate else None
         return StreamPlan(variant.url, audio.url if audio else None, variant.label, variant.width, variant.height,
                           vmedia.duration, "master", variant.codecs, notes, estimate)
 
