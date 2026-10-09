@@ -131,10 +131,81 @@ if not defined FFPROBE_FILE (
 )
 for %%F in ("%FFMPEG_FILE%") do set "FFMPEG_BIN=%%~dpF"
 for %%F in ("%FFMPEG_BIN%..") do set "FFMPEG_ROOT=%%~fF"
-if not exist "%FFMPEG_ROOT%\LICENSE.txt" (
-  set "FAIL_REASON=The FFmpeg package did not include LICENSE.txt; refusing to package without its license notice."
+
+rem Prefer the license notice supplied with the downloaded package, if present.
+set "FFMPEG_LICENSE_SOURCE="
+for /r "%FFMPEG_WORK%" %%F in (LICENSE.txt) do if not defined FFMPEG_LICENSE_SOURCE set "FFMPEG_LICENSE_SOURCE=%%F"
+
+rem BtbN shared builds do not always ship a LICENSE.txt. If absent, bundle the
+rem official FFmpeg license overview and both GPL/LGPL license texts from upstream.
+if defined FFMPEG_LICENSE_SOURCE goto :license_ready
+echo No packaged LICENSE.txt found. Downloading official FFmpeg license texts...
+set "LICENSE_DIR=%FFMPEG_WORK%\ffmpeg-license-texts"
+if not exist "%LICENSE_DIR%" mkdir "%LICENSE_DIR%"
+curl.exe -fL --retry 2 --connect-timeout 20 "https://raw.githubusercontent.com/FFmpeg/FFmpeg/master/LICENSE.md" -o "%LICENSE_DIR%\LICENSE.md"
+if errorlevel 1 (
+  set "FAIL_REASON=Could not download the official FFmpeg license overview."
   goto :fail
 )
+curl.exe -fL --retry 2 --connect-timeout 20 "https://raw.githubusercontent.com/FFmpeg/FFmpeg/master/COPYING.GPLv2" -o "%LICENSE_DIR%\COPYING.GPLv2"
+if errorlevel 1 (
+  set "FAIL_REASON=Could not download the official GPLv2 license text."
+  goto :fail
+)
+curl.exe -fL --retry 2 --connect-timeout 20 "https://raw.githubusercontent.com/FFmpeg/FFmpeg/master/COPYING.GPLv3" -o "%LICENSE_DIR%\COPYING.GPLv3"
+if errorlevel 1 (
+  set "FAIL_REASON=Could not download the official GPLv3 license text."
+  goto :fail
+)
+curl.exe -fL --retry 2 --connect-timeout 20 "https://raw.githubusercontent.com/FFmpeg/FFmpeg/master/COPYING.LGPLv2.1" -o "%LICENSE_DIR%\COPYING.LGPLv2.1"
+if errorlevel 1 (
+  set "FAIL_REASON=Could not download the official LGPLv2.1 license text."
+  goto :fail
+)
+curl.exe -fL --retry 2 --connect-timeout 20 "https://raw.githubusercontent.com/FFmpeg/FFmpeg/master/COPYING.LGPLv3" -o "%LICENSE_DIR%\COPYING.LGPLv3"
+if errorlevel 1 (
+  set "FAIL_REASON=Could not download the official LGPLv3 license text."
+  goto :fail
+)
+(
+  echo FFmpeg official licensing information
+  echo.
+  echo LICENSE.md explains the upstream FFmpeg license choices.
+  echo The GPL and LGPL documents below are included as reference texts.
+  echo Which terms apply depends on the binary configuration and its dependencies.
+  echo.
+  echo ============================================================
+  echo FFmpeg LICENSE.md
+  echo ============================================================
+  type "%LICENSE_DIR%\LICENSE.md"
+  echo.
+  echo ============================================================
+  echo COPYING.GPLv2
+  echo ============================================================
+  type "%LICENSE_DIR%\COPYING.GPLv2"
+  echo.
+  echo ============================================================
+  echo COPYING.GPLv3
+  echo ============================================================
+  type "%LICENSE_DIR%\COPYING.GPLv3"
+  echo.
+  echo ============================================================
+  echo COPYING.LGPLv2.1
+  echo ============================================================
+  type "%LICENSE_DIR%\COPYING.LGPLv2.1"
+  echo.
+  echo ============================================================
+  echo COPYING.LGPLv3
+  echo ============================================================
+  type "%LICENSE_DIR%\COPYING.LGPLv3"
+) > "%FFMPEG_WORK%\FFmpeg-LICENSE.txt"
+if errorlevel 1 (
+  set "FAIL_REASON=Could not assemble the FFmpeg licensing information."
+  goto :fail
+)
+set "FFMPEG_LICENSE_SOURCE=%FFMPEG_WORK%\FFmpeg-LICENSE.txt"
+
+:license_ready
 
 rem Clear stale binaries and DLLs when staging a new FFmpeg package.
 del /q "%BUILD_TOOLS%\ffmpeg.exe" "%BUILD_TOOLS%\ffprobe.exe" "%BUILD_TOOLS%\FFmpeg-LICENSE.txt" 2>nul
@@ -149,7 +220,7 @@ if errorlevel 1 (
   set "FAIL_REASON=Could not stage ffprobe.exe."
   goto :fail
 )
-copy /y "%FFMPEG_ROOT%\LICENSE.txt" "%BUILD_TOOLS%\FFmpeg-LICENSE.txt" >nul
+copy /y "%FFMPEG_LICENSE_SOURCE%" "%BUILD_TOOLS%\FFmpeg-LICENSE.txt" >nul
 if errorlevel 1 (
   set "FAIL_REASON=Could not copy the FFmpeg license notice."
   goto :fail
@@ -166,6 +237,7 @@ if errorlevel 1 (
   set "FAIL_REASON=The staged FFprobe executable could not start."
   goto :fail
 )
+"%BUILD_TOOLS%\ffmpeg.exe" -hide_banner -version >> "%BUILD_TOOLS%\FFmpeg-LICENSE.txt" 2>&1
 rmdir /s /q "%FFMPEG_WORK%" 2>nul
 del /q "%FFMPEG_ZIP%" 2>nul
 
