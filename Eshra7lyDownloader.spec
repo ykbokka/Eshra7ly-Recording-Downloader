@@ -1,7 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 """One-file Windows GUI bundle. Build after downloading Chromium and FFmpeg."""
 from pathlib import Path
-from PyInstaller.building.datastruct import Tree
 from PyInstaller.utils.hooks import collect_all
 
 ROOT = Path(SPECPATH).resolve()
@@ -25,7 +24,15 @@ pw_datas, pw_binaries, pw_hiddenimports = collect_all("playwright")
 datas = []
 datas += ctk_datas
 datas += pw_datas
-datas += list(Tree(str(BROWSER_DIR), prefix="browser"))
+
+# PyInstaller Analysis datas are (source_path, destination_directory) pairs.
+# Tree() produces internal 3-field TOC entries, so do not pass Tree entries into Analysis.
+for source in BROWSER_DIR.rglob("*"):
+    if source.is_file():
+        relative_parent = source.relative_to(BROWSER_DIR).parent
+        destination = (Path("browser") / relative_parent).as_posix()
+        datas.append((str(source), destination))
+
 datas += [(str(FFMPEG_LICENSE), "licenses")]
 datas += [(str(NOTICES), "licenses")]
 
