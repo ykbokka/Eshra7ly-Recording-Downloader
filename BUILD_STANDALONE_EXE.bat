@@ -145,6 +145,18 @@ if exist "%BUILD_TOOLS%\ffmpeg.exe" if exist "%BUILD_TOOLS%\ffprobe.exe" if exis
 )
 if "%NEED_FFMPEG%"=="0" goto :ffmpeg_ready
 
+rem Reuse an extracted archive left behind by the previous failed build, if one exists.
+set "FFMPEG_WORK="
+set "FFMPEG_FILE="
+set "FFPROBE_FILE="
+set "REUSED_FFMPEG_WORK="
+for /d %%D in ("%TEMP%\Eshra7ly_FFmpeg_*") do if not defined REUSED_FFMPEG_WORK call :check_cached_ffmpeg "%%~fD"
+if defined REUSED_FFMPEG_WORK (
+  set "FFMPEG_WORK=%REUSED_FFMPEG_WORK%"
+  echo Reusing extracted FFmpeg files from the previous build attempt...
+  goto :ffmpeg_files_ready
+)
+
 set "FFMPEG_WORK=%TEMP%\Eshra7ly_FFmpeg_%RANDOM%_%RANDOM%"
 set "FFMPEG_ZIP=%FFMPEG_WORK%.zip"
 mkdir "%FFMPEG_WORK%" 2>nul
@@ -168,10 +180,10 @@ if errorlevel 1 (
   goto :fail
 )
 
-set "FFMPEG_FILE="
-set "FFPROBE_FILE="
 for /r "%FFMPEG_WORK%" %%F in (ffmpeg.exe) do if not defined FFMPEG_FILE set "FFMPEG_FILE=%%F"
 for /r "%FFMPEG_WORK%" %%F in (ffprobe.exe) do if not defined FFPROBE_FILE set "FFPROBE_FILE=%%F"
+
+:ffmpeg_files_ready
 if not defined FFMPEG_FILE (
   set "FAIL_REASON=The downloaded FFmpeg archive did not contain ffmpeg.exe."
   goto :fail
@@ -335,3 +347,18 @@ echo ============================================================
 echo.
 pause
 exit /b 1
+
+:check_cached_ffmpeg
+set "CANDIDATE_FF="
+set "CANDIDATE_FP="
+for /r "%~1" %%F in (ffmpeg.exe) do if not defined CANDIDATE_FF set "CANDIDATE_FF=%%F"
+for /r "%~1" %%F in (ffprobe.exe) do if not defined CANDIDATE_FP set "CANDIDATE_FP=%%F"
+if defined CANDIDATE_FF if defined CANDIDATE_FP (
+  set "REUSED_FFMPEG_WORK=%~1"
+  set "FFMPEG_FILE=%CANDIDATE_FF%"
+  set "FFPROBE_FILE=%CANDIDATE_FP%"
+) else (
+  set "FFMPEG_FILE="
+  set "FFPROBE_FILE="
+)
+exit /b
