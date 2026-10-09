@@ -18,6 +18,7 @@ from core.errors import ArchiverError, CancelledError
 from core.ffmpeg_pipeline import PipelineConfig
 from core.filenames import sanitize_filename
 from core.stream_classifier import build_plan
+from core import hls_parser as hls
 from core.tools import find_tools
 from platforms.eshra7ly import START_URL, eshra7lyplatform
 
@@ -549,10 +550,78 @@ class Eshra7lyGUI(ctk.CTk):
                 tools, info["headers"], audio_mode=options["audio"], cancel=self.stop_event,
             )
             self._notify_status("Identifying available video and audio streams…")
-            plan = build_plan(
-                info["captures"], options["quality"], headers=info["headers"],
-                probe=make_probe(tools, info["headers"], cfg),
-            )
+            probe = make_probe(tools, info["headers"], cfg)
+
+            # The player may expose several master playlists for one recording.
+            # Resolve each one and let the user choose by its actual media duration.
+            masters = []
+            seen_masters = set()
+            for capture in info["captures"]:
+                if not hls.looks_like_master(capture.text):
+                    continue
+                key = (capture.url.split("?", 1)[0], capture.text)
+                if key not in seen_masters:
+                    seen_masters.add(key)
+                    masters.append(capture)
+
+            plans = []
+            errors = []
+            if masters:
+                for capture in masters:
+                    if self.stop_event.is_set():
+                        raise CancelledError("cancelled")
+                    try:
+                        plans.append(build_plan(
+                            info["captures"], options["quality"],
+                            headers=info["headers"], probe=probe,
+                            master_capture=capture,
+                        ))
+                    except ArchiverError as exc:
+                        errors.append(str(exc))
+            else:
+                plans.append(build_plan(
+                    info["captures"], options["quality"],
+                    headers=info["headers"], probe=probe,
+                ))
+
+            if not plans:
+                reason = errors[0] if errors else "No usable streams were detected."
+                raise ArchiverError("Couldn't identify a usable recording stream. " + reason)
+
+            # Collapse repeated captures of the same stream while preserving order.
+            unique_plans = []
+            seen_plans = set()
+            for candidate in plans:
+                key = (candidate.video_url.split("?", 1)[0],
+                       candidate.audio_url.split("?", 1)[0] if candidate.audio_url else None,
+                       round(candidate.duration))
+                if key not in seen_plans:
+                    seen_plans.add(key)
+                    unique_plans.append(candidate)
+            plans = unique_plans
+
+            if len(plans) > 1:
+                def duration_label(seconds):
+                    seconds = max(0, int(round(seconds)))
+                    hours, remainder = divmod(seconds, 3600)
+                    minutes, seconds = divmod(remainder, 60)
+                    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+                labels = []
+                for index, candidate in enumerate(plans, 1):
+                    resolution = (
+                        f"{candidate.width}x{candidate.height}"
+                        if candidate.width and candidate.height else candidate.label
+                    )
+                    labels.append(
+                        f"Stream {index:02d}  |  {duration_label(candidate.duration)}  |  "
+                        f"{candidate.label} ({resolution})"
+                    )
+                self._notify_status(f"Found {len(plans)} possible streams; choose the recording by duration.")
+                selected = self._choose_from_browser("AVAILABLE STREAMS — CHECK DURATION", labels)
+                plan = plans[selected]
+            else:
+                plan = plans[0]
             name = sanitize_filename(options["name"] or info.get("title") or "recording")
             self._notify_status(f"Downloading {name} · {plan.label}")
             final_path = run_pipeline(
