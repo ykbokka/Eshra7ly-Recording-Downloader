@@ -69,14 +69,16 @@ if errorlevel 1 (
   goto :fail
 )
 
-echo [3/7] Preparing the bundled Chromium browser...
-rem Remove old browser revisions so the EXE doesn't bundle several copies of Chromium.
-if exist "%APP_DIR%\browser" rmdir /s /q "%APP_DIR%\browser"
-mkdir "%APP_DIR%\browser" 2>nul
+echo [3/7] Preparing the bundled headless Chromium browser...
+rem Preserve an existing download so rerunning after a later failure doesn't redownload it.
+if not exist "%APP_DIR%\browser" mkdir "%APP_DIR%\browser"
 set "PLAYWRIGHT_BROWSERS_PATH=%APP_DIR%\browser"
-"%VENV_PY%" -m playwright install chromium
+rem The app always runs Chromium headlessly, so the full GUI browser is not needed.
+rem Remove only full-Chromium folders; keep chromium_headless_shell and its downloaded files.
+for /d %%D in ("%APP_DIR%\browser\chromium-*") do if exist "%%~fD" rmdir /s /q "%%~fD"
+"%VENV_PY%" -m playwright install --only-shell chromium
 if errorlevel 1 (
-  set "FAIL_REASON=Playwright could not download Chromium. Check your internet connection and try again."
+  set "FAIL_REASON=Playwright could not download Chromium headless shell. Check the connection and retry."
   goto :fail
 )
 
