@@ -370,15 +370,21 @@ class eshra7lyplatform(baseplatform):
                 course, group, recording = self._select_recording(page)
 
                 deadline = time.monotonic() + self.capture_timeout
-                seen_master_at = None
+                last_master_signature = None
+                last_master_change_at = None
                 while time.monotonic() < deadline:
                     if self.cancel_event is not None and self.cancel_event.is_set():
                         raise CancelledError("cancelled")
                     page.wait_for_timeout(400)
-                    if any(hls.looks_like_master(c.text) for c in captures):
-                        seen_master_at = seen_master_at or time.monotonic()
-                        if time.monotonic() - seen_master_at >= self.settle:
-                            break
+                    signature = tuple(
+                        (c.url, c.text) for c in captures
+                        if hls.looks_like_master(c.text)
+                    )
+                    if signature and signature != last_master_signature:
+                        last_master_signature = signature
+                        last_master_change_at = time.monotonic()
+                    if last_master_change_at is not None and time.monotonic() - last_master_change_at >= self.settle:
+                        break
 
                 try:
                     title = page.title()
