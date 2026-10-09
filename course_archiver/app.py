@@ -88,7 +88,7 @@ def run_pipeline(plan, cfg, out_dir, name, *, keep_temp=False, force=False,
             print(f"existing file is not valid ({e}); downloading again")
 
     # Keep intermediate .part files inside a hidden app-local staging directory.
-    temp_root = Path(__file__).resolve().parent / ".eshra7ly_temp"
+    temp_root = config.APP_DATA_DIR / ".temp"
     temp_root.mkdir(parents=True, exist_ok=True)
     _set_hidden(temp_root)
     tmp = tempfile.mkdtemp(prefix="job_", dir=str(temp_root))
