@@ -88,7 +88,9 @@ def run_ffmpeg(cfg: PipelineConfig, args: List[str], *, label: str, duration: Op
     cmd = [cfg.tools.ffmpeg, "-hide_banner", "-loglevel", "error", "-nostats", "-progress", "pipe:1", "-y", *args]
     if cfg.debug:
         print("\n  ffmpeg:", redact_command(cmd))
-    flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if sys.platform == "win32" else 0
+    flags = 0
+    if sys.platform == "win32":
+        flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             text=True, encoding="utf-8", errors="replace", creationflags=flags)
     lines: "queue.Queue[Optional[str]]" = queue.Queue()
