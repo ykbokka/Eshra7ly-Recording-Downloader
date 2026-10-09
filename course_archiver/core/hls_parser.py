@@ -151,6 +151,45 @@ def parse_media(text: str, base_url: str) -> Media:
     return Media(base_url, count, dur, ended or vod, init, protection_reasons(lines))
 
 
+def media_resources(text: str, base_url: str):
+    """Return (initialization resources, media segments) as (absolute URL, byte-range length or None).
+
+    A byte-range length is already the exact number of bytes fetched for that item, even when
+    the containing object is larger. Each map is counted once per playlist.
+    """
+    lines = _lines(text)
+    maps = []
+    segments = []
+    segment_pending = False
+    pending_range = None
+
+    def range_length(raw):
+        if not raw:
+            return None
+        try:
+            return max(0, int(raw.split("@", 1)[0].strip()))
+        except (TypeError, ValueError):
+            return None
+
+    for line in lines:
+        if line.startswith("#EXT-X-MAP:"):
+            attrs = parse_attrs(line.split(":", 1)[1])
+            uri = attrs.get("URI")
+            if uri:
+                maps.append((urljoin(base_url, uri), range_length(attrs.get("BYTERANGE"))))
+        elif line.startswith("#EXT-X-BYTERANGE:"):
+            pending_range = range_length(line.split(":", 1)[1])
+        elif line.startswith("#EXTINF:"):
+            segment_pending = True
+        elif segment_pending and not line.startswith("#"):
+            segments.append((urljoin(base_url, line), pending_range))
+            segment_pending = False
+            pending_range = None
+
+    # Repeated declarations of the same init section need not be counted twice.
+    maps = list(dict.fromkeys(maps))
+    return maps, segments
+
 def choose_variant(master: Master, quality: str = "best") -> Tuple[Variant, str]:
     """Return (variant, note). quality: 'best' or a height like '1080' / '1080p'."""
     # one variant per height, AVC preferred, then highest bandwidth
