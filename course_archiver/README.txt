@@ -1,46 +1,52 @@
-COURSE ARCHIVER - AUTOMATIC ESHRA7LY NAVIGATION + MEDIA PIPELINE
+ESHRA7LY DOWNLOADER
+Mac-inspired desktop interface + authorized recording archive pipeline
 
-What it does
-  Starts at https://eshra7ly.net/student/recordings, asks for login details in the terminal only
-  when needed, lets you choose a course, recording group, and unlocked recording, clicks Play,
-  captures HLS playlists requested by the normal player, classifies video/audio streams, and uses
-  FFmpeg to download and mux the recording into an MKV file.
+QUICK START (WINDOWS)
+1. Open PowerShell in this folder (course_archiver).
+2. Install Python dependencies:
+     python -m pip install -r requirements.txt
+3. Install the project-local Chromium browser:
+     $env:PLAYWRIGHT_BROWSERS_PATH = "$PWD\browser"
+     python -m playwright install chromium
+4. Install FFmpeg and FFprobe, for example:
+     winget install Gyan.FFmpeg
+   Close and reopen your terminal after installation if FFmpeg is not found.
+5. Launch the desktop app:
+     python gui.py
 
-Setup (Windows)
-  pip install -r requirements.txt
-  $env:PLAYWRIGHT_BROWSERS_PATH = "$PWD\\browser"\n  python -m playwright install chromium
-  winget install Gyan.FFmpeg
-  Open a NEW terminal afterwards; ffmpeg and ffprobe must both be on PATH.
+The first launch opens a clean desktop window. Choose quality and output folder, then click
+"Choose recording". Chromium opens Eshra7ly. If sign-in is needed, enter your credentials in
+the app's local sign-in dialog; the password is not saved. Complete any one-time code or human
+verification in the browser. Course, group, and recording selection are shown in the app.
 
-Run (from this folder)
-  python app.py
-  python app.py --probe
-  python app.py --quality 1080 --name "Lesson 01" --out D:\Archive
-  python app.py --audio flac
-  python app.py --debug
-  python app.py --help
+COMMAND-LINE MODE
+The original CLI is still available:
+     python app.py
+     python app.py --probe
+     python app.py --quality 1080 --name "Lesson 01" --out D:\Archive
+     python app.py --audio flac
+     python app.py --debug
+     python app.py --help
 
-Login and privacy
-  * Login credentials are requested locally in the terminal; the password is hidden while typing.
-  * Credentials are not written to config files or logs. Do not send your password to anyone.
-  * If the site requires a one-time code or human verification, complete that step in the opened browser.
-  * The app uses a project-local Playwright Chromium profile in browser_profile; it does not use Opera GX.
-  * Use this only for recordings you are authorized to access.
+GUI NOTES
+- Preferences are stored in gui_settings.json next to the app.
+- Credentials are not written to settings or logs.
+- The browser uses a project-local Chromium profile in browser_profile; it does not use Opera GX.
+- The recording chooser sorts recordings with detected dates oldest to newest; recordings whose
+  dates cannot be read are placed at the bottom.
+- The default audio mode copies the original AAC stream. FLAC transcodes the AAC source and cannot
+  restore quality that was lost in the original AAC.
+- Downloads are saved as MKV files. Existing valid outputs are reused unless changed or re-downloaded.
+- Use this only for recordings you are authorized to access.
 
-Media pipeline
-  * Captures HLS playlist responses from the normal browser player and keeps signed URLs in memory.
-  * Only Referer, Origin, User-Agent and Accept-Language are forwarded; cookies and Authorization
-    headers are not captured or forwarded to FFmpeg.
-  * FFmpeg protocol access is restricted to https,tls,tcp to prevent playlists from reading local files.
-  * Encrypted/DRM playlists are refused. No DRM, login protection, or access-control bypass is attempted.
-  * Default audio mode copies the original AAC stream. --audio flac transcodes that lossy AAC to FLAC;
-    it cannot restore quality lost in the original AAC.
-  * A 401/403/404/410 from the CDN usually means the signed link expired or the stream is unavailable
-    to this session; run again to capture fresh links.
+MEDIA AND SECURITY
+- HLS playlists are captured from the normal browser player; signed URLs remain in memory.
+- Only selected request headers are forwarded to FFmpeg. Cookies and Authorization headers are not
+  captured or forwarded.
+- FFmpeg protocol access is restricted to https,tls,tcp.
+- Encrypted/DRM playlists are refused. DRM, login protection, and access-control bypass are not supported.
+- HTTP 401/403/404/410 from the CDN often means a signed link expired or the stream is unavailable
+  to this session; run again to capture fresh links.
 
-Output
-  Files are written to downloads by default. Existing valid files are not downloaded again unless
-  --force is supplied. Temporary files are retained on failure for inspection.
-
-Tests
-  python -m unittest discover -s tests -t . -v
+TESTS
+     python -m unittest discover -s tests -t . -v
