@@ -8,7 +8,7 @@ What it does
 
 Setup (Windows)
   pip install -r requirements.txt
-  python -m playwright install chromium
+  $env:PLAYWRIGHT_BROWSERS_PATH = "$PWD\\browser"\n  python -m playwright install chromium
   winget install Gyan.FFmpeg
   Open a NEW terminal afterwards; ffmpeg and ffprobe must both be on PATH.
 
