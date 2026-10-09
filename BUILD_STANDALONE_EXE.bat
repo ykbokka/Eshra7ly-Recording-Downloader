@@ -29,32 +29,83 @@ if not exist "%ROOT%\THIRD_PARTY_NOTICES.txt" (
   goto :fail
 )
 
-rem Python is required only on the build PC, not on PCs running the finished EXE.
-set "PY_CMD=py -3.11"
-%PY_CMD% --version >nul 2>&1
-if errorlevel 1 set "PY_CMD=python"
-%PY_CMD% --version >nul 2>&1
-if errorlevel 1 (
-  set "FAIL_REASON=Python 3.9 or newer is required on the build PC. Install Python, then run this BAT again."
-  goto :fail
+rem Python is required only on the build PC, not on PCs that run the finished EXE.
+rem Probe actual interpreter startup because the Python install manager can print install hints.
+set "PY_CMD="
+set "PY_PROBE=%TEMP%\Eshra7ly_PythonProbe_%RANDOM%.txt"
+for %%V in (3.14 3.13 3.12 3.11 3.10 3.9) do (
+  py -%%V -c "import sys; print('ESHRA7LY_PYTHON_OK') if sys.version_info >= (3, 9) else None" >"%PY_PROBE%" 2>&1
+  findstr /x /c:"ESHRA7LY_PYTHON_OK" "%PY_PROBE%" >nul 2>&1
+  if not errorlevel 1 if not defined PY_CMD set "PY_CMD=py -%%V"
 )
-%PY_CMD% -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)" >nul 2>&1
+if not defined PY_CMD (
+  python -c "import sys; print('ESHRA7LY_PYTHON_OK') if sys.version_info >= (3, 9) else None" >"%PY_PROBE%" 2>&1
+  findstr /x /c:"ESHRA7LY_PYTHON_OK" "%PY_PROBE%" >nul 2>&1
+  if not errorlevel 1 set "PY_CMD=python"
+)
+if not defined PY_CMD (
+  where py >nul 2>&1
+  if not errorlevel 1 (
+    echo No usable Python runtime was found. The Python install manager is available.
+    choice /c YN /m "Install Python 3.11 now using 'py install 3.11'"
+    if errorlevel 2 (
+      set "FAIL_REASON=No working Python 3.9+ runtime was found. Install Python 3.11 and rerun this BAT file."
+      goto :fail
+    )
+    py install 3.11
+    if errorlevel 1 (
+      set "FAIL_REASON=The Python install manager could not install Python 3.11. Install Python from python.org and rerun this BAT file."
+      goto :fail
+    )
+    py -3.11 -c "import sys; print('ESHRA7LY_PYTHON_OK') if sys.version_info >= (3, 9) else None" >"%PY_PROBE%" 2>&1
+    findstr /x /c:"ESHRA7LY_PYTHON_OK" "%PY_PROBE%" >nul 2>&1
+    if errorlevel 1 (
+      set "FAIL_REASON=Python 3.11 installation finished, but the runtime could not be launched. Restart the terminal and retry."
+      goto :fail
+    )
+    set "PY_CMD=py -3.11"
+  ) else (
+    set "FAIL_REASON=Python 3.9 or newer is required on the build PC. Install Python 3.11 (64-bit), then run this BAT again."
+    goto :fail
+  )
+)
+del /q "%PY_PROBE%" >nul 2>&1
+echo Using build interpreter: %PY_CMD%
+%PY_CMD% -c "import sys; print(sys.executable); print(sys.version)"
 if errorlevel 1 (
-  set "FAIL_REASON=Your selected Python is too old. Python 3.9 or newer is required."
+  set "FAIL_REASON=The selected Python runtime could not start. Install a working Python 3.11+ runtime and retry."
   goto :fail
 )
 
+if exist "%VENV_DIR%" if not exist "%VENV_PY%" rmdir /s /q "%VENV_DIR%"
 if exist "%VENV_PY%" (
-  "%VENV_PY%" -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)" >nul 2>&1
+  "%VENV_PY%" -c "import sys; print('ESHRA7LY_VENV_OK') if sys.version_info >= (3, 9) else None" >"%PY_PROBE%" 2>&1
+  findstr /x /c:"ESHRA7LY_VENV_OK" "%PY_PROBE%" >nul 2>&1
   if errorlevel 1 rmdir /s /q "%VENV_DIR%"
+  del /q "%PY_PROBE%" >nul 2>&1
 )
 if not exist "%VENV_PY%" (
   echo [1/7] Creating an isolated build environment...
   %PY_CMD% -m venv "%VENV_DIR%"
   if errorlevel 1 (
-    set "FAIL_REASON=Could not create the Python build environment."
+    set "FAIL_REASON=Could not create the Python build environment. Check that the selected Python includes the venv module."
     goto :fail
   )
+  if not exist "%VENV_PY%" (
+    set "FAIL_REASON=Python returned without creating .build_venv\Scripts\python.exe. Remove the .build_venv folder and retry."
+    goto :fail
+  )
+  "%VENV_PY%" -c "import sys; print('ESHRA7LY_VENV_OK') if sys.version_info >= (3, 9) else None" >"%PY_PROBE%" 2>&1
+  findstr /x /c:"ESHRA7LY_VENV_OK" "%PY_PROBE%" >nul 2>&1
+  if errorlevel 1 (
+    set "FAIL_REASON=The new virtual environment was created but its Python could not be started. Delete .build_venv and retry."
+    goto :fail
+  )
+  del /q "%PY_PROBE%" >nul 2>&1
+)
+if not exist "%VENV_PY%" (
+  set "FAIL_REASON=The build Python environment is missing. Delete .build_venv and run this BAT again."
+  goto :fail
 )
 
 echo [2/7] Installing the project and packaging dependencies...
