@@ -33,6 +33,8 @@ binaries = []
 binaries += ctk_binaries
 binaries += pw_binaries
 binaries += [(str(FFMPEG), "tools"), (str(FFPROBE), "tools")]
+# Some third-party FFmpeg builds ship dependent DLLs beside ffmpeg.exe.
+binaries += [(str(path), "tools") for path in sorted(BUILD_TOOLS.glob("*.dll"))]
 
 hiddenimports = sorted(set(
     ctk_hiddenimports
