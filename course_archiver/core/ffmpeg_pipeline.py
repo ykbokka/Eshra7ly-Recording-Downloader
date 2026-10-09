@@ -57,10 +57,23 @@ def input_args(cfg: PipelineConfig, url: str) -> List[str]:
     return a + ["-i", url]
 
 
+def _console_write(text: str, *, flush: bool = False) -> None:
+    """Write CLI progress only when a console stream exists (e.g. not pythonw/GUI mode)."""
+    stream = getattr(sys, "stdout", None)
+    if stream is None or not hasattr(stream, "write"):
+        return
+    try:
+        stream.write(text)
+        if flush:
+            stream.flush()
+    except (OSError, ValueError):
+        # A console can disappear while a GUI-launched job is still running.
+        pass
+
+
 def default_progress(label: str, pct: Optional[float], out_s: float, size: int, speed: str) -> None:
     p = f"{pct:5.1f}%" if pct is not None else "  ?  "
-    sys.stdout.write(f"\r  {label:<6} {p}  {out_s/60:6.1f} min  {size/1048576:8.1f} MB  {speed:>7}   ")
-    sys.stdout.flush()
+    _console_write(f"\r  {label:<6} {p}  {out_s/60:6.1f} min  {size/1048576:8.1f} MB  {speed:>7}   ", flush=True)
 
 
 def _drain(stream, sink):
@@ -138,7 +151,7 @@ def run_ffmpeg(cfg: PipelineConfig, args: List[str], *, label: str, duration: Op
         proc.kill()
         rc = proc.wait()
     t2.join(timeout=2)
-    sys.stdout.write("\n")
+    _console_write("\n")
     if rc == 0:
         return
     tail = redact_text(" | ".join(x for x in err_tail[-4:] if x))
