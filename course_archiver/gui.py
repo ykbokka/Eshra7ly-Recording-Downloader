@@ -175,6 +175,14 @@ class Eshra7lyGUI(ctk.CTk):
 
     def _show_page(self, page):
         self.active_page = page
+        for attr in (
+            "home_status", "home_progress_title", "home_progress", "home_progress_info",
+            "activity_box", "start_button", "cancel_button", "quality_menu", "audio_menu",
+            "name_entry", "output_entry", "download_title", "download_page_status",
+            "download_progress", "download_progress_details",
+        ):
+            if hasattr(self, attr):
+                delattr(self, attr)
         for child in self.page_host.winfo_children():
             child.destroy()
         for name, button in self.nav_buttons.items():
@@ -227,7 +235,7 @@ class Eshra7lyGUI(ctk.CTk):
 
         fields = ctk.CTkFrame(setup, fg_color="transparent")
         fields.grid(row=2, column=0, sticky="ew", padx=22)
-        fields.grid_columnconfigure((0, 1), weight=1)
+        fields.grid_columnconfigure(0, weight=1)\n        fields.grid_columnconfigure(1, weight=1)
         self._label(fields, "VIDEO QUALITY", 9, COLORS["muted"], True).grid(row=0, column=0, sticky="w")
         self._label(fields, "AUDIO TRACK", 9, COLORS["muted"], True).grid(row=0, column=1, sticky="w", padx=(13, 0))
         self.quality_menu = ctk.CTkOptionMenu(
@@ -286,6 +294,9 @@ class Eshra7lyGUI(ctk.CTk):
             command=self._cancel_download, state="disabled",
         )
         self.cancel_button.grid(row=0, column=1)
+        if self.busy:
+            self.start_button.configure(state="disabled", text="Downloading…")
+            self.cancel_button.configure(state="normal")
 
         right = ctk.CTkFrame(host, fg_color="transparent")
         right.grid(row=3, column=1, sticky="nsew", padx=(12, 0), pady=(0, 12))
@@ -344,8 +355,10 @@ class Eshra7lyGUI(ctk.CTk):
         ctk.CTkLabel(icon, text="↓", font=("SF Pro Text", 22, "bold"),
                      text_color=COLORS["blue"]).place(relx=.5, rely=.45, anchor="center")
         self._label(row, self.progress_label, 14, COLORS["text"], True).grid(row=0, column=1, sticky="w")
-        self.download_page_status = self._label(row, self.status_text, 10, COLORS["muted"]).grid(
-            row=1, column=1, sticky="w", pady=(3, 0))
+        self.download_title = self._label(row, self.progress_label, 14, COLORS["text"], True)
+        self.download_title.grid(row=0, column=1, sticky="w")
+        self.download_page_status = self._label(row, self.status_text, 10, COLORS["muted"])
+        self.download_page_status.grid(row=1, column=1, sticky="w", pady=(3, 0))
         self.download_progress = ctk.CTkProgressBar(current, height=8, corner_radius=6,
                                                      fg_color="#E9EDF4", progress_color=COLORS["blue"])
         self.download_progress.pack(fill="x", padx=22, pady=(0, 8))
@@ -556,8 +569,10 @@ class Eshra7lyGUI(ctk.CTk):
 
     def _finish_busy_state(self):
         self.busy = False
-        self.start_button.configure(state="normal", text="Choose recording  →")
-        self.cancel_button.configure(state="disabled")
+        if getattr(self, "start_button", None) is not None:
+            self.start_button.configure(state="normal", text="Choose recording  →")
+        if getattr(self, "cancel_button", None) is not None:
+            self.cancel_button.configure(state="disabled")
         self.connection_pill.configure(text="●  READY", text_color=COLORS["green"],
                                        fg_color=COLORS["green_soft"])
 
@@ -741,14 +756,16 @@ class Eshra7lyGUI(ctk.CTk):
             self.home_progress_info.configure(text=self.progress_details)
         if hasattr(self, "download_progress"):
             self.download_progress.set(self.progress_value)
-            # Rebuild the downloads page for up-to-date labels only when open.
-            if self.active_page == "Downloads":
-                self._show_page("Downloads")
+            self.download_title.configure(text=self.progress_label)
+            self.download_progress_details.configure(text=self.progress_details)
+            self.download_page_status.configure(text=self.status_text)
 
     def _set_status(self, message, log=True):
         self.status_text = str(message)
         if hasattr(self, "home_status"):
             self.home_status.configure(text=self.status_text)
+        if hasattr(self, "download_page_status"):
+            self.download_page_status.configure(text=self.status_text)
         if hasattr(self, "connection_pill") and not self.busy:
             self.connection_pill.configure(text="●  READY", text_color=COLORS["green"],
                                            fg_color=COLORS["green_soft"])
