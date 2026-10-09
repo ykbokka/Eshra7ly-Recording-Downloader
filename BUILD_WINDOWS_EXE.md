@@ -4,6 +4,8 @@ The repository includes a GitHub Actions workflow that builds the GUI as a singl
 
 ## Recommended build
 
+**Local one-click build:** run `BUILD_STANDALONE_EXE.bat` from the repository root. It creates an isolated `.build_venv`, installs the Python build dependencies, downloads the matching Chromium browser and FFmpeg tools, checks Python syntax, and builds `dist\\Eshra7lyDownloader.exe`. The first run needs an internet connection and Python 3.9 or newer on the build PC. The finished EXE does not require Python to be installed on the computer that runs it.
+
 Every push to `feature/macos-desktop-gui` starts a build automatically. Once the run completes successfully, open the run in the repository's **Actions** tab and download the artifact named `Eshra7lyDownloader-Windows-x64`.
 
 The workflow also defines `workflow_dispatch` for manual builds when GitHub makes the workflow available for manual dispatch. Artifacts are kept for 14 days.
