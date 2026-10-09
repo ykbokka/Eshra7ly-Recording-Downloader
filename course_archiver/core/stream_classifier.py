@@ -78,8 +78,9 @@ def build_plan(captures: List[Capture], quality: str = "best", *, headers: Optio
             amedia = _media_for(audio.url, captures, fetch)
             if abs(amedia.duration - vmedia.duration) > max(3.0, 0.02 * vmedia.duration):
                 notes.append(f"audio ({amedia.duration:.0f}s) and video ({vmedia.duration:.0f}s) lengths differ")
+        estimate = int(vmedia.duration * variant.bandwidth / 8 * 0.88) if variant.bandwidth > 0 else None
         return StreamPlan(variant.url, audio.url if audio else None, variant.label, variant.width, variant.height,
-                          vmedia.duration, "master", variant.codecs, notes)
+                          vmedia.duration, "master", variant.codecs, notes, estimate)
 
     # No master seen: identify media playlists by content.
     medias = [c for c in captures if hls.looks_like_media(c.text)]
