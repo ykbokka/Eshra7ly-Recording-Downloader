@@ -636,9 +636,13 @@ class Eshra7lyGUI(ctk.CTk):
                         f"{candidate.width}x{candidate.height}"
                         if candidate.width and candidate.height else candidate.label
                     )
+                    size_label = (
+                        f"~{candidate.estimated_size_bytes / 1073741824:.2f} GB"
+                        if candidate.estimated_size_bytes else "size unknown"
+                    )
                     labels.append(
                         f"Stream {index:02d}  |  {duration_label(candidate.duration)}  |  "
-                        f"{candidate.label} ({resolution})"
+                        f"{candidate.label} ({resolution})  |  {size_label}"
                     )
                 self._notify_status(f"Found {len(plans)} possible streams; choose the recording by duration.")
                 selected = self._choose_from_browser("AVAILABLE STREAMS — CHECK DURATION", labels)
@@ -646,7 +650,9 @@ class Eshra7lyGUI(ctk.CTk):
             else:
                 plan = plans[0]
             name = sanitize_filename(options["name"] or info.get("title") or "recording")
-            self._notify_status(f"Downloading {name} · {plan.label}")
+            estimate = getattr(plan, "estimated_size_bytes", None)
+            estimate_text = f"~{estimate / 1073741824:.2f} GB" if estimate else "unavailable"
+            self._notify_status(f"Ready · {name} · {plan.label} · estimated size {estimate_text}")
             final_path = run_pipeline(
                 plan, cfg, options["output_dir"], name,
                 keep_temp=options["keep_temp"], on_progress=self._on_progress,
