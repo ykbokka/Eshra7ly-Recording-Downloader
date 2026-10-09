@@ -4,9 +4,9 @@ The repository includes a GitHub Actions workflow that builds the GUI as a singl
 
 ## Recommended build
 
-Open the **Actions** tab of this repository, choose **Build standalone Windows EXE**, and select **Run workflow** on the `feature/macos-desktop-gui` branch. After the job succeeds, open that workflow run and download the artifact named `Eshra7lyDownloader-Windows-x64`.
+Every push to `feature/macos-desktop-gui` starts a build automatically. Once the run completes successfully, open the run in the repository's **Actions** tab and download the artifact named `Eshra7lyDownloader-Windows-x64`.
 
-A push to `feature/macos-desktop-gui` also starts a build automatically. Artifacts are kept for 14 days.
+The workflow also defines `workflow_dispatch` for manual builds when GitHub makes the workflow available for manual dispatch. Artifacts are kept for 14 days.
 
 ## What the one-file build does
 
