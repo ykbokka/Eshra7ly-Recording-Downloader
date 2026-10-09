@@ -50,7 +50,6 @@ hiddenimports = sorted(set(
         "tkinter",
         "tkinter.filedialog",
         "tkinter.messagebox",
-        "PIL._tkinter_finder",
         "playwright.sync_api",
         "playwright._impl._driver",
     ]
