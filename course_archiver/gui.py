@@ -50,6 +50,7 @@ def _default_prefs():
         "audio": "copy",
         "capture_timeout": 300,
         "keep_temp": False,
+        "headless": False,
     }
 
 
@@ -443,7 +444,22 @@ class Eshra7lyGUI(ctk.CTk):
             variable=self.keep_temp_var, font=("SF Pro Text", 11),
             text_color=COLORS["text"], fg_color=COLORS["blue"], hover_color=COLORS["blue_hover"],
             border_color="#C7CCD5",
-        ).pack(anchor="w", padx=22, pady=(1, 19))
+        ).pack(anchor="w", padx=22, pady=(1, 12))
+
+        self.background_browser_var = tk.BooleanVar(
+            value=bool(self.prefs.get("headless", False))
+        )
+        ctk.CTkCheckBox(
+            card, text="Run Chromium in the background",
+            variable=self.background_browser_var, font=("SF Pro Text", 11, "bold"),
+            text_color=COLORS["text"], fg_color=COLORS["blue"], hover_color=COLORS["blue_hover"],
+            border_color="#C7CCD5",
+        ).pack(anchor="w", padx=22, pady=(0, 4))
+        self._label(
+            card,
+            "Best after you've signed in once. Turn this off if the site asks for a code or human verification.",
+            10, COLORS["muted"], wraplength=690, justify="left",
+        ).pack(anchor="w", padx=46, pady=(0, 15))
 
         ctk.CTkButton(
             card, text="Save preferences", height=43, corner_radius=11, width=170,
@@ -475,6 +491,7 @@ class Eshra7lyGUI(ctk.CTk):
             "quality": self.settings_quality.get(),
             "audio": "flac" if self.settings_audio.get().startswith("FLAC") else "copy",
             "keep_temp": bool(self.keep_temp_var.get()),
+            "headless": bool(self.background_browser_var.get()),
         })
         self._save_prefs()
         self._set_status("Preferences saved.")
@@ -515,6 +532,7 @@ class Eshra7lyGUI(ctk.CTk):
             "name": self.name_entry.get().strip(),
             "keep_temp": bool(self.prefs["keep_temp"]),
             "capture_timeout": int(self.prefs.get("capture_timeout", 300)),
+            "headless": bool(self.prefs.get("headless", False)),
         }
         threading.Thread(target=self._download_worker, args=(snapshot,), daemon=True).start()
 
@@ -530,6 +548,7 @@ class Eshra7lyGUI(ctk.CTk):
                 choose_callback=self._choose_from_browser,
                 login_callback=self._login_from_browser,
                 cancel_event=self.stop_event,
+                headless=options["headless"],
             )
             info = platform.extract_media_info(START_URL)
             if self.stop_event.is_set():
