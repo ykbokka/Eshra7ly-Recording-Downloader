@@ -270,22 +270,43 @@ set "FFMPEG_LICENSE_SOURCE=%FFMPEG_WORK%\FFmpeg-LICENSE.txt"
 
 :license_ready
 
-rem Clear stale binaries and DLLs when staging a new FFmpeg package.
-del /q "%BUILD_TOOLS%\ffmpeg.exe" "%BUILD_TOOLS%\ffprobe.exe" "%BUILD_TOOLS%\FFmpeg-LICENSE.txt" 2>nul
-for %%F in ("%BUILD_TOOLS%\*.dll") do if exist "%%~fF" del /q "%%~fF"
-copy /y "%FFMPEG_FILE%" "%BUILD_TOOLS%\ffmpeg.exe" >nul
-if errorlevel 1 (
-  set "FAIL_REASON=Could not stage ffmpeg.exe."
+rem Validate source paths first: antivirus quarantine or a partial archive can remove files after discovery.
+echo FFmpeg source: "%FFMPEG_FILE%"
+echo FFprobe source: "%FFPROBE_FILE%"
+echo FFmpeg license source: "%FFMPEG_LICENSE_SOURCE%"
+if not exist "%FFMPEG_FILE%" (
+  set "FAIL_REASON=The discovered ffmpeg.exe disappeared or was quarantined. Check Windows Security Protection History, then rerun the builder."
   goto :fail
 )
-copy /y "%FFPROBE_FILE%" "%BUILD_TOOLS%\ffprobe.exe" >nul
-if errorlevel 1 (
-  set "FAIL_REASON=Could not stage ffprobe.exe."
+if not exist "%FFPROBE_FILE%" (
+  set "FAIL_REASON=The discovered ffprobe.exe disappeared or was quarantined. Check Windows Security Protection History, then rerun the builder."
   goto :fail
 )
-copy /y "%FFMPEG_LICENSE_SOURCE%" "%BUILD_TOOLS%\FFmpeg-LICENSE.txt" >nul
+if not exist "%FFMPEG_LICENSE_SOURCE%" (
+  set "FAIL_REASON=The FFmpeg license notice source could not be found."
+  goto :fail
+)
+
+rem Clear stale binaries and DLLs, then stage with PowerShell for clearer copy errors.
+del /f /q "%BUILD_TOOLS%\ffmpeg.exe" "%BUILD_TOOLS%\ffprobe.exe" "%BUILD_TOOLS%\FFmpeg-LICENSE.txt" 2>nul
+if exist "%BUILD_TOOLS%\ffmpeg.exe" (
+  set "FAIL_REASON=Could not replace build-tools\ffmpeg.exe. Close anything using it and retry."
+  goto :fail
+)
+for %%F in ("%BUILD_TOOLS%\*.dll") do if exist "%%~fF" del /f /q "%%~fF"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; Copy-Item -LiteralPath $env:FFMPEG_FILE -Destination (Join-Path $env:BUILD_TOOLS 'ffmpeg.exe') -Force; if (-not (Test-Path (Join-Path $env:BUILD_TOOLS 'ffmpeg.exe'))) { throw 'Destination ffmpeg.exe was not created.' }"
 if errorlevel 1 (
-  set "FAIL_REASON=Could not copy the FFmpeg license notice."
+  set "FAIL_REASON=Could not stage ffmpeg.exe. Read the PowerShell copy error above; check file access and Windows Security Protection History."
+  goto :fail
+)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; Copy-Item -LiteralPath $env:FFPROBE_FILE -Destination (Join-Path $env:BUILD_TOOLS 'ffprobe.exe') -Force; if (-not (Test-Path (Join-Path $env:BUILD_TOOLS 'ffprobe.exe'))) { throw 'Destination ffprobe.exe was not created.' }"
+if errorlevel 1 (
+  set "FAIL_REASON=Could not stage ffprobe.exe. Read the PowerShell copy error above; check file access and Windows Security Protection History."
+  goto :fail
+)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; Copy-Item -LiteralPath $env:FFMPEG_LICENSE_SOURCE -Destination (Join-Path $env:BUILD_TOOLS 'FFmpeg-LICENSE.txt') -Force; if (-not (Test-Path (Join-Path $env:BUILD_TOOLS 'FFmpeg-LICENSE.txt'))) { throw 'Destination FFmpeg-LICENSE.txt was not created.' }"
+if errorlevel 1 (
+  set "FAIL_REASON=Could not stage the FFmpeg license notice. Read the PowerShell copy error above."
   goto :fail
 )
 rem Bundle any runtime DLLs supplied beside the FFmpeg executables.
