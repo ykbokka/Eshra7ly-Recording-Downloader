@@ -126,6 +126,7 @@ def build_plan(captures: List[Capture], quality: str = "best", *, headers: Optio
 def _resource_size(url: str, headers: Dict[str, str]) -> Optional[int]:
     """Read an object size from HTTP metadata without downloading the segment body."""
     clean = safe_headers(headers)
+    clean["Accept-Encoding"] = "identity"
     try:
         response = requests.head(url, headers=clean, allow_redirects=True, timeout=(4, 8))
         try:
@@ -202,21 +203,29 @@ def fetch_source_size_bytes(plan: StreamPlan, captures: List[Capture],
             on_status(f"Fetching source size metadata · {len(urls_to_query)} segment resources…")
 
         if urls_to_query:
-            with ThreadPoolExecutor(max_workers=16) as pool:
-                pending = {
-                    pool.submit(_resource_size, url, headers): url
-                    for url in urls_to_query
-                }
-                for done, future in enumerate(as_completed(pending), 1):
-                    url = pending[future]
-                    try:
-                        sizes[url] = future.result()
-                    except Exception:
-                        sizes[url] = None
-                    if sizes[url] is None:
-                        failed = True
-                    if on_status and (done == len(pending) or done % 50 == 0):
-                        on_status(f"Fetching source size metadata · {done}/{len(pending)} checked…")
+            # Query in small batches. If a CDN withholds size metadata, stop early rather than
+            # issuing thousands of requests that cannot produce a complete fetched total.
+            batch_size = 16
+            for start in range(0, len(urls_to_query), batch_size):
+                batch = urls_to_query[start:start + batch_size]
+                with ThreadPoolExecutor(max_workers=min(16, len(batch))) as pool:
+                    pending = {
+                        pool.submit(_resource_size, url, headers): url
+                        for url in batch
+                    }
+                    for future in as_completed(pending):
+                        url = pending[future]
+                        try:
+                            sizes[url] = future.result()
+                        except Exception:
+                            sizes[url] = None
+                        if sizes[url] is None:
+                            failed = True
+                completed = min(start + len(batch), len(urls_to_query))
+                if failed:
+                    return None
+                if on_status:
+                    on_status(f"Fetching source size metadata · {completed}/{len(urls_to_query)} checked…")
 
         if failed:
             return None
