@@ -62,19 +62,35 @@ def run_pipeline(plan, cfg, out_dir, name, *, keep_temp=False, force=False,
 
     progress_args = {"on_progress": on_progress} if on_progress else {}
     os.makedirs(out_dir, exist_ok=True)
+    temp_root = config.APP_DATA_DIR / ".temp"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    _set_hidden(temp_root)
     final = os.path.join(out_dir, name + ".mkv")
     estimate = getattr(plan, "estimated_size_bytes", None)
+    size_fetched = getattr(plan, "size_source", "bitrate") == "segments"
     if estimate:
-        # Soft-reserve the expected space by preflighting with a safety margin.
-        required = int(estimate * 1.15) + 256 * 1024 * 1024
-        free = shutil.disk_usage(out_dir).free
-        status(f"Estimated final size: about {_format_bytes(estimate)} · checking disk space…")
-        if free < required:
+        # Both intermediate streams and the final MKV coexist during muxing.
+        output_required = int(estimate * 1.15) + 256 * 1024 * 1024
+        temp_required = int(estimate * 1.15) + 256 * 1024 * 1024
+        output_free = shutil.disk_usage(out_dir).free
+        temp_free = shutil.disk_usage(temp_root).free
+        same_volume = os.stat(out_dir).st_dev == os.stat(temp_root).st_dev
+        label = "Fetched source segment total" if size_fetched else "Estimated final size"
+        required = output_required + temp_required if same_volume else output_required
+        status(f"{label}: about {_format_bytes(estimate)} · checking output and temporary space…")
+        if same_volume and output_free < required:
             raise ArchiverError(
-                f"Not enough free disk space for this recording. Estimated size: {_format_bytes(estimate)}; "
-                f"free: {_format_bytes(free)}. Keep at least {_format_bytes(required)} free and retry."
+                f"Not enough free disk space for the recording and its temporary streams. "
+                f"Source size: {_format_bytes(estimate)}; free: {_format_bytes(output_free)}; "
+                f"recommended free space: {_format_bytes(required)}."
             )
-        status(f"Space check passed · about {_format_bytes(estimate)} expected, {_format_bytes(free)} free.")
+        if not same_volume and (output_free < output_required or temp_free < temp_required):
+            raise ArchiverError(
+                f"Not enough free disk space on the output or temporary drive. "
+                f"Output free: {_format_bytes(output_free)} (recommended {_format_bytes(output_required)}); "
+                f"temporary free: {_format_bytes(temp_free)} (recommended {_format_bytes(temp_required)})."
+            )
+        status(f"Space check passed · {label.lower()} about {_format_bytes(estimate)}.")
     else:
         status("Recording size estimate unavailable for this stream; no reliable bitrate was provided.")
     if os.path.exists(final) and not force:
@@ -88,9 +104,6 @@ def run_pipeline(plan, cfg, out_dir, name, *, keep_temp=False, force=False,
             print(f"existing file is not valid ({e}); downloading again")
 
     # Keep intermediate .part files inside a hidden app-local staging directory.
-    temp_root = config.APP_DATA_DIR / ".temp"
-    temp_root.mkdir(parents=True, exist_ok=True)
-    _set_hidden(temp_root)
     tmp = tempfile.mkdtemp(prefix="job_", dir=str(temp_root))
     _set_hidden(tmp)
     video, audio = os.path.join(tmp, "video.mkv"), os.path.join(tmp, "audio.mka")
