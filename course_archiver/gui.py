@@ -654,6 +654,8 @@ class Eshra7lyGUI(ctk.CTk):
             fetched_size = fetch_source_size_bytes(
                 plan, info["captures"], info["headers"], on_status=self._notify_status,
             )
+            if self.stop_event.is_set():
+                raise CancelledError("cancelled")
             if fetched_size:
                 plan.estimated_size_bytes = fetched_size
                 plan.size_source = "segments"
@@ -799,8 +801,8 @@ class Eshra7lyGUI(ctk.CTk):
         ).grid(row=3, column=0, sticky="w", padx=26, pady=(14, 5))
         self._label(
             dialog,
-            "The finished MKV can differ slightly from the source total. "
-            "Temporary video/audio files also need storage while the file is assembled.",
+            "This is the source media total, not a guaranteed final MKV size. Container overhead or "
+            "audio transcoding can change the finished file size. Temporary streams also need storage.",
             10, COLORS["muted"], wraplength=480, justify="left",
         ).grid(row=4, column=0, sticky="w", padx=26, pady=(0, 14))
 
