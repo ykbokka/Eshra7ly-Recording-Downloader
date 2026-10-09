@@ -56,6 +56,7 @@ class Variant:
     height: Optional[int]
     codecs: str
     audio_group: Optional[str]
+    average_bandwidth: Optional[int] = None
 
     @property
     def label(self) -> str:
@@ -107,10 +108,23 @@ def parse_master(text: str, base_url: str) -> Master:
             if j >= len(lines):
                 raise StreamDetectionError("STREAM-INF without URI")
             m = re.match(r"^(\d+)x(\d+)$", a.get("RESOLUTION", ""))
-            bw = a.get("BANDWIDTH") or a.get("AVERAGE-BANDWIDTH") or "0"
-            variants.append(Variant(urljoin(base_url, lines[j]), int(float(bw)) if bw.replace(".", "").isdigit() else 0,
-                                    int(m.group(1)) if m else None, int(m.group(2)) if m else None,
-                                    a.get("CODECS", ""), a.get("AUDIO")))
+            bw_raw = a.get("BANDWIDTH", "0")
+            avg_raw = a.get("AVERAGE-BANDWIDTH")
+            try:
+                bw = max(0, int(float(bw_raw)))
+            except (TypeError, ValueError):
+                bw = 0
+            try:
+                average_bw = max(0, int(float(avg_raw))) if avg_raw else None
+            except (TypeError, ValueError):
+                average_bw = None
+            if bw <= 0 and average_bw:
+                bw = average_bw
+            variants.append(Variant(
+                urljoin(base_url, lines[j]), bw,
+                int(m.group(1)) if m else None, int(m.group(2)) if m else None,
+                a.get("CODECS", ""), a.get("AUDIO"), average_bw,
+            ))
     if not variants:
         raise StreamDetectionError("master playlist has no video variants")
     return Master(base_url, variants, audio, protection_reasons(lines))
