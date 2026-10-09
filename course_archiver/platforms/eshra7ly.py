@@ -2,7 +2,9 @@
 """Eshra7ly navigation + authorized HLS capture using project-local Playwright Chromium."""
 import getpass
 import os
+import re
 import time
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -41,6 +43,61 @@ def _choose(title: str, items: list[str]) -> int:
         except ValueError:
             pass
         print("Invalid choice. Try again.")
+
+
+
+def _recording_date(card):
+    """Return a parsed recording date, checking date-specific DOM fields first."""
+    candidates = []
+    selectors = [
+        "time[datetime]", "[data-date]", "[datetime]", ".yt-date",
+        ".recording-date", ".yt-recording-date", ".date",
+        "[class*='date' i]",
+    ]
+    for selector in selectors:
+        try:
+            nodes = card.locator(selector)
+            for i in range(min(nodes.count(), 8)):
+                node = nodes.nth(i)
+                for attr in ("datetime", "data-date", "title", "aria-label"):
+                    value = node.get_attribute(attr)
+                    if value:
+                        candidates.append(value.strip())
+                text = " ".join((node.inner_text() or "").split())
+                if text:
+                    candidates.append(text)
+        except Exception:
+            continue
+
+    # Some layouts show the date as plain text without a dedicated date class.
+    try:
+        candidates.append(" ".join((card.inner_text() or "").split()))
+    except Exception:
+        pass
+
+    formats = (
+        "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d",
+        "%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y",
+        "%m/%d/%Y", "%m-%d-%Y",
+        "%d %b %Y", "%d %B %Y", "%b %d, %Y", "%B %d, %Y",
+        "%d %b, %Y", "%d %B, %Y",
+    )
+    patterns = (
+        r"\b\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\b",
+        r"\b\d{1,2}[-/.]\d{1,2}[-/.]\d{4}\b",
+        r"\b\d{1,2}\s+[A-Za-z]{3,9},?\s+\d{4}\b",
+        r"\b[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}\b",
+    )
+    for candidate in candidates:
+        for pattern in patterns:
+            for match in re.findall(pattern, candidate, flags=re.IGNORECASE):
+                value = match.strip()
+                for fmt in formats:
+                    try:
+                        return datetime.strptime(value, fmt)
+                    except ValueError:
+                        continue
+    return None
 
 
 def _first_visible(page, selectors: list[str]):
@@ -192,17 +249,28 @@ class eshra7lyplatform(baseplatform):
         except Exception:
             raise StreamDetectionError("No available recording cards were found in the selected group.")
 
-        recordings = []
+        dated_recordings = []
         for i in range(cards.count()):
             card = cards.nth(i)
             title = card.locator(".yt-title")
             label = title.first.inner_text() if title.count() else card.inner_text()
             label = " ".join((label or "").split())
-            recordings.append(label or f"Recording {i + 1}")
+            date_value = _recording_date(card)
+            dated_recordings.append((date_value, label or f"Recording {i + 1}", i))
 
-        recording_index = _choose("RECORDINGS FOUND", recordings)
-        selected_recording = recordings[recording_index]
-        card = cards.nth(recording_index)
+        # Sort known dates oldest-to-newest. Undated items stay at the bottom,
+        # retaining their original page order.
+        dated_recordings.sort(
+            key=lambda item: (item[0] is None, item[0] or datetime.max, item[2])
+        )
+        recordings = [
+            f"{date_value.strftime('%Y-%m-%d') if date_value else 'Date unknown'} | {label}"
+            for date_value, label, _ in dated_recordings
+        ]
+
+        recording_index = _choose("RECORDINGS FOUND (OLDEST TO NEWEST)", recordings)
+        date_value, selected_recording, original_index = dated_recordings[recording_index]
+        card = cards.nth(original_index)
         play = card.locator("button.yt-btn.yt-btn-play.play_recording")
         if not play.count():
             play = card.locator("button.play_recording")
