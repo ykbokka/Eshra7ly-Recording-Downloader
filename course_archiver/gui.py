@@ -27,15 +27,15 @@ ROOT = Path(__file__).resolve().parent
 PREFS_FILE = ROOT / "gui_settings.json"
 
 COLORS = {
-    "app": "#F4F5F8",
+    "app": "#F2F5FB",
     "sidebar": "#FFFFFF",
     "card": "#FFFFFF",
     "border": "#E7E9EF",
     "text": "#20232B",
     "muted": "#858A97",
-    "blue": "#3478F6",
-    "blue_hover": "#2367E8",
-    "blue_soft": "#EAF1FF",
+    "blue": "#4F6BFF",
+    "blue_hover": "#3D55E8",
+    "blue_soft": "#E9EDFF",
     "green": "#1EAD78",
     "green_soft": "#E8F8F1",
     "red": "#E95B57",
@@ -73,12 +73,15 @@ class Eshra7lyGUI(ctk.CTk):
         self.recent_downloads = []
         self.status_text = "Ready when you are."
         self.progress_value = 0.0
+        self.progress_percent = "0%"
+        self.animation_phase = 0
         self.progress_label = "Waiting for a recording"
         self.progress_details = "Your next lesson will appear here."
         self.speed_text = "—"
         self._build_shell()
         self._show_page("Home")
         self.after(45, self._pump_jobs)
+        self.after(420, self._animate_ui)
 
     def _load_prefs(self):
         prefs = _default_prefs()
@@ -112,9 +115,10 @@ class Eshra7lyGUI(ctk.CTk):
 
         brand = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         brand.pack(fill="x", padx=22, pady=(27, 34))
-        logo = ctk.CTkFrame(brand, width=42, height=42, corner_radius=14, fg_color=COLORS["blue"])
-        logo.pack(side="left")
-        logo.pack_propagate(False)
+        self.logo_tile = ctk.CTkFrame(brand, width=42, height=42, corner_radius=14, fg_color=COLORS["blue"])
+        self.logo_tile.pack(side="left")
+        self.logo_tile.pack_propagate(False)
+        logo = self.logo_tile
         ctk.CTkLabel(logo, text="e", font=("SF Pro Display", 27, "bold"),
                      text_color="#FFFFFF").place(relx=0.5, rely=0.43, anchor="center")
         brand_text = ctk.CTkFrame(brand, fg_color="transparent")
@@ -315,12 +319,19 @@ class Eshra7lyGUI(ctk.CTk):
         self.home_status.pack(anchor="w", padx=19)
         self.home_progress_title = self._label(status_card, self.progress_label, 10, COLORS["muted"])
         self.home_progress_title.pack(anchor="w", padx=19, pady=(15, 7))
+        home_progress_row = ctk.CTkFrame(status_card, fg_color="transparent")
+        home_progress_row.pack(fill="x", padx=19)
+        home_progress_row.grid_columnconfigure(0, weight=1)
         self.home_progress = ctk.CTkProgressBar(
-            status_card, height=7, corner_radius=5,
-            fg_color="#E9EDF4", progress_color=COLORS["blue"],
+            home_progress_row, height=8, corner_radius=5,
+            fg_color="#E7EAF3", progress_color=COLORS["blue"],
         )
-        self.home_progress.pack(fill="x", padx=19)
+        self.home_progress.grid(row=0, column=0, sticky="ew", pady=4)
         self.home_progress.set(self.progress_value)
+        self.home_progress_percent = self._label(
+            home_progress_row, self.progress_percent, 10, COLORS["blue"], True
+        )
+        self.home_progress_percent.grid(row=0, column=1, sticky="e", padx=(12, 0))
         self.home_progress_info = self._label(status_card, self.progress_details, 10, COLORS["muted"])
         self.home_progress_info.pack(anchor="w", padx=19, pady=(7, 18))
 
@@ -362,10 +373,19 @@ class Eshra7lyGUI(ctk.CTk):
         self.download_title.grid(row=0, column=1, sticky="w")
         self.download_page_status = self._label(row, self.status_text, 10, COLORS["muted"])
         self.download_page_status.grid(row=1, column=1, sticky="w", pady=(3, 0))
-        self.download_progress = ctk.CTkProgressBar(current, height=8, corner_radius=6,
-                                                     fg_color="#E9EDF4", progress_color=COLORS["blue"])
-        self.download_progress.pack(fill="x", padx=22, pady=(0, 8))
+        download_progress_row = ctk.CTkFrame(current, fg_color="transparent")
+        download_progress_row.pack(fill="x", padx=22, pady=(0, 8))
+        download_progress_row.grid_columnconfigure(0, weight=1)
+        self.download_progress = ctk.CTkProgressBar(
+            download_progress_row, height=9, corner_radius=6,
+            fg_color="#E7EAF3", progress_color=COLORS["blue"],
+        )
+        self.download_progress.grid(row=0, column=0, sticky="ew", pady=4)
         self.download_progress.set(self.progress_value)
+        self.download_progress_percent = self._label(
+            download_progress_row, self.progress_percent, 11, COLORS["blue"], True
+        )
+        self.download_progress_percent.grid(row=0, column=1, sticky="e", padx=(12, 0))
         self.download_progress_details = self._label(current, self.progress_details, 10, COLORS["muted"])
         self.download_progress_details.pack(anchor="w", padx=22, pady=(0, 18))
 
@@ -648,6 +668,26 @@ class Eshra7lyGUI(ctk.CTk):
             self._set_status("Stopping safely… FFmpeg will be asked to finish its current file.")
             self.cancel_button.configure(state="disabled")
 
+    def _animate_ui(self):
+        """Small, low-cost accent animation; all UI updates stay on Tk's main thread."""
+        self.animation_phase = (self.animation_phase + 1) % 4
+        logo_colors = [COLORS["blue"], "#6657F5", "#536DFF", "#3478F6"]
+        try:
+            self.logo_tile.configure(fg_color=logo_colors[self.animation_phase])
+            if self.busy:
+                pulse = ["#E9EDFF", "#DDE5FF", "#E9EDFF", "#F0ECFF"][self.animation_phase]
+                self.connection_pill.configure(
+                    text=("●  WORKING" if self.animation_phase % 2 == 0 else "●  WORKING ·"),
+                    text_color=COLORS["blue"], fg_color=pulse,
+                )
+            elif self.connection_pill.cget("text").startswith("●  WORKING"):
+                self.connection_pill.configure(
+                    text="●  READY", text_color=COLORS["green"], fg_color=COLORS["green_soft"]
+                )
+        except Exception:
+            pass
+        self.after(420, self._animate_ui)
+
     def _finish_busy_state(self):
         self.busy = False
         if getattr(self, "start_button", None) is not None:
@@ -825,6 +865,7 @@ class Eshra7lyGUI(ctk.CTk):
         pct = item.get("pct")
         if pct is not None:
             self.progress_value = max(0.0, min(1.0, float(pct) / 100.0))
+            self.progress_percent = f"{self.progress_value * 100:.0f}%"
         label = item.get("label", "Downloading")
         self.progress_label = f"{label.title()} · {pct:.1f}%" if pct is not None else label.title()
         size_mb = item.get("size", 0) / 1048576
@@ -833,10 +874,12 @@ class Eshra7lyGUI(ctk.CTk):
         self.progress_details = f"{size_mb:.1f} MB written" + (f"  ·  {speed}" if speed else "")
         if hasattr(self, "home_progress"):
             self.home_progress.set(self.progress_value)
+            self.home_progress_percent.configure(text=self.progress_percent)
             self.home_progress_title.configure(text=self.progress_label)
             self.home_progress_info.configure(text=self.progress_details)
         if hasattr(self, "download_progress"):
             self.download_progress.set(self.progress_value)
+            self.download_progress_percent.configure(text=self.progress_percent)
             self.download_title.configure(text=self.progress_label)
             self.download_progress_details.configure(text=self.progress_details)
             self.download_page_status.configure(text=self.status_text)
