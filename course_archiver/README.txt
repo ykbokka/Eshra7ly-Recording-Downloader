@@ -19,11 +19,10 @@ The first launch opens a clean desktop window. Choose quality and output folder,
 the app's local sign-in dialog; the password is not saved. Complete any one-time code or human
 verification in the visible browser. Course, group, and recording selection are shown in the app.
 
-BACKGROUND BROWSER MODE
-- Open Settings and enable "Run Chromium in the background" to run the browser headlessly.
-- First sign in with background mode disabled and finish any required verification in the visible browser.
-- If the site later requests a one-time code or human verification, disable background mode and retry.
-- If headless sign-in cannot finish automatically, the app will show an error explaining how to switch back.
+INVISIBLE BROWSER MODE
+- Chromium always runs headlessly. It does not open a browser window or create a browser taskbar button.
+- The saved browser profile must already have a valid Eshra7ly session for seamless use.
+- If Eshra7ly requires a one-time code or human verification, the invisible session may not be able to complete it; renew the session through the site's normal sign-in flow before using the app.
 
 COMMAND-LINE MODE
 The original CLI is still available:
