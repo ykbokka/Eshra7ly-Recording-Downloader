@@ -1,19 +1,16 @@
-"""Machine-specific settings. Override with environment variables instead of editing code if you like."""
+"""Machine-specific settings. Override paths with environment variables if needed."""
 import os
+from pathlib import Path
 
-# Opera GX (Chromium) launched through Playwright with the existing profile.
-BROWSER_EXECUTABLE = os.environ.get(
-    "ESHRA7LY_BROWSER_EXE",
-    r"C:\Users\Souhaib Bokka\AppData\Local\Programs\Opera GX\opera.exe",
-)
+PROJECT_DIR = Path(__file__).resolve().parent
 BROWSER_PROFILE_DIR = os.environ.get(
     "ESHRA7LY_PROFILE_DIR",
-    r"C:\Users\Souhaib Bokka\AppData\Roaming\Opera Software\Opera GX Stable",
+    str(PROJECT_DIR / "browser_profile"),
 )
 
-# How long to wait (seconds) for you to filter/open a recording after the Recordings tab is clicked.
+# How long to wait for the selected recording's HLS playlists.
 CAPTURE_TIMEOUT = 300
-# Extra seconds to keep listening after the first playlists show up (player may request more).
+# Extra seconds to listen after the first master playlist appears.
 CAPTURE_SETTLE = 6
 
 DEFAULT_OUTPUT_DIR = "downloads"
