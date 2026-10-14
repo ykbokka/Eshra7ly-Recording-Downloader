@@ -6,10 +6,23 @@ asking ffprobe what streams it contains.
 """
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
+import threading
 from typing import Callable, Dict, List, Optional
 from urllib.parse import urlsplit
 
 import requests
+
+_HTTP_LOCAL = threading.local()
+
+
+def _http_session():
+    """Reuse keep-alive connections within each worker without sharing Sessions across threads."""
+    session = getattr(_HTTP_LOCAL, "session", None)
+    if session is None:
+        session = requests.Session()
+        _HTTP_LOCAL.session = session
+    return session
+
 
 from . import hls_parser as hls
 from .errors import ProtectedStreamError, StreamDetectionError
@@ -128,7 +141,7 @@ def _resource_size(url: str, headers: Dict[str, str]) -> Optional[int]:
     clean = safe_headers(headers)
     clean["Accept-Encoding"] = "identity"
     try:
-        response = requests.head(url, headers=clean, allow_redirects=True, timeout=(4, 8))
+        response = _http_session().head(url, headers=clean, allow_redirects=True, timeout=(3, 5))
         try:
             if 200 <= response.status_code < 300:
                 raw = response.headers.get("Content-Length")
@@ -144,9 +157,9 @@ def _resource_size(url: str, headers: Dict[str, str]) -> Optional[int]:
     range_headers = dict(clean)
     range_headers["Range"] = "bytes=0-0"
     try:
-        response = requests.get(
+        response = _http_session().get(
             url, headers=range_headers, allow_redirects=True,
-            stream=True, timeout=(4, 8),
+            stream=True, timeout=(3, 5),
         )
         try:
             if response.status_code == 206:
@@ -168,10 +181,11 @@ def fetch_source_size_bytes(plan: StreamPlan, captures: List[Capture],
                             headers: Optional[Dict[str, str]] = None,
                             on_status: Optional[Callable[[str], None]] = None,
                             cancel_event=None) -> Optional[int]:
-    """Sum source HLS segment sizes from HTTP metadata; return None if any size is unavailable.
+    """Sum source HLS segment sizes from HTTP metadata without downloading segment bodies.
 
-    HLS usually has no single downloadable file or total-size header. This queries segment
-    metadata, not segment bodies, and counts separate audio and video playlists when present.
+    Requests are issued concurrently in one bounded pool and each worker reuses its HTTP
+    connections. If any resource with unknown size cannot be measured, return None so the
+    caller can keep the quick bitrate estimate instead of waiting through repeated batches.
     """
     headers = headers or {}
     fetch = default_fetch(headers)
@@ -186,56 +200,53 @@ def fetch_source_size_bytes(plan: StreamPlan, captures: List[Capture],
             if cancel_event is not None and cancel_event.is_set():
                 return None
             capture = find_capture(captures, playlist_url)
-            playlist_text = capture.text if capture else fetch(playlist_url)
-            media = hls.parse_media(playlist_text, playlist_url)
+            text = capture.text if capture else fetch(playlist_url)
+            media = hls.parse_media(text, playlist_url)
             if media.protection:
                 return None
-            init_resources, segments = hls.media_resources(playlist_text, playlist_url)
+            init_resources, segments = hls.media_resources(text, playlist_url)
             resources.extend(init_resources)
             resources.extend(segments)
 
         if not resources:
             return None
 
-        # Byte ranges already tell us precisely how many bytes belong to a segment.
+        # Deduplicate URLs: the same init segment can be referenced many times.
         urls_to_query = sorted({url for url, known_length in resources if known_length is None})
         sizes = {}
-        failed = False
-
         if on_status:
-            on_status(f"Fetching source size metadata · {len(urls_to_query)} segment resources…")
+            on_status(f"Fetching source size metadata · {len(urls_to_query)} resources (parallel)…")
 
         if urls_to_query:
-            # Query in small batches. If a CDN withholds size metadata, stop early rather than
-            # issuing thousands of requests that cannot produce a complete fetched total.
-            batch_size = 16
-            for start in range(0, len(urls_to_query), batch_size):
-                if cancel_event is not None and cancel_event.is_set():
-                    return None
-                batch = urls_to_query[start:start + batch_size]
-                with ThreadPoolExecutor(max_workers=min(16, len(batch))) as pool:
-                    pending = {
-                        pool.submit(_resource_size, url, headers): url
-                        for url in batch
-                    }
-                    for future in as_completed(pending):
-                        url = pending[future]
-                        try:
-                            sizes[url] = future.result()
-                        except Exception:
-                            sizes[url] = None
-                        if sizes[url] is None:
-                            failed = True
-                completed = min(start + len(batch), len(urls_to_query))
-                if cancel_event is not None and cancel_event.is_set():
-                    return None
+            # HLS recordings can contain hundreds or thousands of tiny segments. Sequential
+            # batches multiply CDN latency; bounded concurrency avoids that wait while keeping
+            # request pressure finite. Use a single pool for the whole set.
+            worker_count = min(48, len(urls_to_query))
+            with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="size-meta") as pool:
+                pending = {pool.submit(_resource_size, url, headers): url for url in urls_to_query}
+                completed = 0
+                failed = False
+                for future in as_completed(pending):
+                    if cancel_event is not None and cancel_event.is_set():
+                        for task in pending:
+                            task.cancel()
+                        return None
+                    url = pending[future]
+                    try:
+                        sizes[url] = future.result()
+                    except Exception:
+                        sizes[url] = None
+                    completed += 1
+                    if sizes[url] is None:
+                        failed = True
+                        for task in pending:
+                            if not task.done():
+                                task.cancel()
+                        break
+                    if on_status and (completed % 50 == 0 or completed == len(urls_to_query)):
+                        on_status(f"Fetching source size metadata · {completed}/{len(urls_to_query)} checked…")
                 if failed:
                     return None
-                if on_status:
-                    on_status(f"Fetching source size metadata · {completed}/{len(urls_to_query)} checked…")
-
-        if failed:
-            return None
 
         total = 0
         for url, known_length in resources:
