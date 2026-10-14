@@ -18,7 +18,7 @@ from typing import Callable, Dict, List, Optional
 from .errors import AccessDeniedError, CancelledError, FfmpegFailedError
 from .models import StreamPlan, safe_headers
 from .redact import redact_command, redact_text
-from .tools import Tools, http_option_supported
+from .tools import Tools, http_option_supported, hls_option_supported
 
 _HTTP_ERR = re.compile(r"(?:HTTP error|Server returned) (\d{3})")
 _TRANSIENT = re.compile(
@@ -58,6 +58,10 @@ def input_args(cfg: PipelineConfig, url: str) -> List[str]:
     # that expose this HTTP protocol option. Unsupported builds safely retain their defaults.
     if http_option_supported(cfg.tools, "multiple_requests"):
         a += ["-multiple_requests", "1"]
+    # HLS can prefetch the next segment on a second connection, hiding CDN latency
+    # between segments. Enable it when the bundled/system FFmpeg exposes the option.
+    if hls_option_supported(cfg.tools, "http_multiple"):
+        a += ["-http_multiple", "1"]
     return a + ["-i", url]
 
 
