@@ -60,7 +60,11 @@ def run_pipeline(plan, cfg, out_dir, name, *, keep_temp=False, force=False,
             except Exception:
                 pass
 
-    progress_args = {"on_progress": on_progress} if on_progress else {}
+    progress_args = {}
+    if on_progress:
+        progress_args["on_progress"] = on_progress
+    if on_status:
+        progress_args["on_status"] = on_status
     os.makedirs(out_dir, exist_ok=True)
     temp_root = config.APP_DATA_DIR / ".temp"
     temp_root.mkdir(parents=True, exist_ok=True)
