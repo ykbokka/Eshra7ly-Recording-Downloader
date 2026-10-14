@@ -106,7 +106,7 @@ def run_ffmpeg(cfg: PipelineConfig, args: List[str], *, label: str, duration: Op
     err_tail: List[str] = []
     diagnostic_pattern = re.compile(
         r"(error|warning|failed|denied|timed out|timeout|http|tls|ssl|connection|"
-        r"invalid data|cannot|could not|refused|\\b40[134]\\b|\\b5\\d\\d\\b)", re.I,
+        r"invalid data|cannot|could not|refused|\b40[134]\b|\b5\d\d\b)", re.I,
     )
 
     def record_stderr(line: str) -> None:
