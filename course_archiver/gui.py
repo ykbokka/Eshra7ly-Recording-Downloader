@@ -371,7 +371,6 @@ class Eshra7lyGUI(ctk.CTk):
         icon.grid_propagate(False)
         ctk.CTkLabel(icon, text="↓", font=("SF Pro Text", 22, "bold"),
                      text_color=COLORS["blue"]).place(relx=.5, rely=.45, anchor="center")
-        self._label(row, self.progress_label, 14, COLORS["text"], True).grid(row=0, column=1, sticky="w")
         self.download_title = self._label(row, self.progress_label, 14, COLORS["text"], True)
         self.download_title.grid(row=0, column=1, sticky="w")
         self.download_page_status = self._label(row, self.status_text, 10, COLORS["muted"])
