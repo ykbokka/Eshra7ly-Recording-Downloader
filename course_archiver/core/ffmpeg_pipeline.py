@@ -49,19 +49,30 @@ def input_args(cfg: PipelineConfig, url: str) -> List[str]:
     if blob:
         a += ["-headers", blob]
     a += ["-rw_timeout", str(int(cfg.io_timeout * 1_000_000))]
-    for opt, val in (("reconnect", "1"), ("reconnect_streamed", "1"), ("reconnect_delay_max", "30")):
+    # Bound reconnects so a server that repeatedly cuts off a response cannot leave the
+    # GUI waiting for minutes without producing output.
+    for opt, val in (
+        ("reconnect", "1"),
+        ("reconnect_streamed", "1"),
+        ("reconnect_delay_max", "10"),
+        ("reconnect_max_retries", "4"),
+        ("reconnect_delay_total_max", "30"),
+        ("reconnect_on_network_error", "1"),
+    ):
         if http_option_supported(cfg.tools, opt):
             a += [f"-{opt}", val]
     if http_option_supported(cfg.tools, "reconnect_on_http_error"):
         a += ["-reconnect_on_http_error", "429,500,502,503,504"]
-    # Keep-alive can avoid a new TCP/TLS handshake for every HLS segment on FFmpeg builds
-    # that expose this HTTP protocol option. Unsupported builds safely retain their defaults.
+
+    # Stability-first diagnostic settings: avoid persistent HTTP connections and
+    # parallel HLS segment requests while investigating premature EOF/retry loops.
+    # These can be re-enabled after confirming the CDN/server handles them correctly.
     if http_option_supported(cfg.tools, "multiple_requests"):
-        a += ["-multiple_requests", "1"]
-    # HLS can prefetch the next segment on a second connection, hiding CDN latency
-    # between segments. Enable it when the bundled/system FFmpeg exposes the option.
+        a += ["-multiple_requests", "0"]
+    if hls_option_supported(cfg.tools, "http_persistent"):
+        a += ["-http_persistent", "0"]
     if hls_option_supported(cfg.tools, "http_multiple"):
-        a += ["-http_multiple", "1"]
+        a += ["-http_multiple", "0"]
     return a + ["-i", url]
 
 
