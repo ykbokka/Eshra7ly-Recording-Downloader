@@ -63,6 +63,7 @@ def find_tools(configured: Optional[str] = None) -> Tools:
 
 
 _cap_cache: Dict[tuple, bool] = {}
+_hls_cap_cache: Dict[tuple, bool] = {}
 
 
 def http_option_supported(tools: Tools, option: str) -> bool:
@@ -75,6 +76,20 @@ def http_option_supported(tools: Tools, option: str) -> bool:
         except (OSError, subprocess.SubprocessError):
             _cap_cache[key] = False
     return _cap_cache[key]
+
+
+
+def hls_option_supported(tools: Tools, option: str) -> bool:
+    """Check whether this FFmpeg build's HLS demuxer supports an input option."""
+    key = (tools.ffmpeg, option)
+    if key not in _hls_cap_cache:
+        try:
+            p = _run([tools.ffmpeg, "-hide_banner", "-h", "demuxer=hls"],
+                     capture_output=True, text=True, timeout=15)
+            _hls_cap_cache[key] = f"-{option} " in (p.stdout + p.stderr)
+        except (OSError, subprocess.SubprocessError):
+            _hls_cap_cache[key] = False
+    return _hls_cap_cache[key]
 
 
 def probe_json(tools: Tools, target: str, extra=(), timeout=60) -> dict:
