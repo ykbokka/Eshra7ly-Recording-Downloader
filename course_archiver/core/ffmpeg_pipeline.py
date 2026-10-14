@@ -93,7 +93,7 @@ def _drain(stream, sink):
 def run_ffmpeg(cfg: PipelineConfig, args: List[str], *, label: str, duration: Optional[float],
                on_progress: Callable = default_progress) -> None:
     """Run one ffmpeg job. Raises AccessDeniedError / FfmpegFailedError(transient flag) / CancelledError."""
-    cmd = [cfg.tools.ffmpeg, "-hide_banner", "-loglevel", "error", "-nostats", "-progress", "pipe:1", "-y", *args]
+    cmd = [cfg.tools.ffmpeg, "-hide_banner", "-loglevel", "warning", "-nostats", "-stats_period", "1", "-progress", "pipe:1", "-y", *args]
     if cfg.debug:
         print("\n  ffmpeg:", redact_command(cmd))
     flags = 0
@@ -108,6 +108,10 @@ def run_ffmpeg(cfg: PipelineConfig, args: List[str], *, label: str, duration: Op
     t1.start(); t2.start()
 
     state = {"out_us": 0, "size": 0, "speed": ""}
+    started_at = time.monotonic()
+    last_output_change_at = started_at
+    last_report_at = started_at
+    sampled_size = 0
 
     def stop_gracefully():
         try:
@@ -133,6 +137,15 @@ def run_ffmpeg(cfg: PipelineConfig, args: List[str], *, label: str, duration: Op
             except queue.Empty:
                 if proc.poll() is not None and not t1.is_alive():
                     break
+                # Keep the GUI visibly alive while FFmpeg waits for a segment or network read.
+                # This heartbeat reports inactivity; it does not claim that bytes are moving.
+                now = time.monotonic()
+                if now - last_report_at >= 2:
+                    idle = int(now - last_output_change_at)
+                    note = f"No output growth · {idle}s" if state["size"] else f"No output bytes yet · {int(now - started_at)}s"
+                    pct = min(100.0, 100 * state["out_us"] / 1_000_000 / duration) if duration else None
+                    on_progress(label, pct, state["out_us"] / 1_000_000, state["size"], note)
+                    last_report_at = now
                 continue
             k, _, v = line.strip().partition("=")
             if k in ("out_time_us", "out_time_ms") and v.lstrip("-").isdigit():
@@ -142,9 +155,21 @@ def run_ffmpeg(cfg: PipelineConfig, args: List[str], *, label: str, duration: Op
             elif k == "speed":
                 state["speed"] = v.strip()
             elif k == "progress":
+                now = time.monotonic()
+                if state["size"] > sampled_size:
+                    elapsed = max(0.001, now - last_output_change_at)
+                    throughput = (state["size"] - sampled_size) / elapsed / 1048576
+                    state["speed"] = f"{throughput:.2f} MB/s"
+                    sampled_size = state["size"]
+                    last_output_change_at = now
+                elif now - last_output_change_at >= 3:
+                    state["speed"] = f"No output growth · {int(now - last_output_change_at)}s"
+                else:
+                    state["speed"] = "Receiving stream…"
                 out_s = state["out_us"] / 1_000_000
                 pct = min(100.0, 100 * out_s / duration) if duration else None
                 on_progress(label, pct, out_s, state["size"], state["speed"])
+                last_report_at = now
                 if v.strip() == "end":
                     break
     except KeyboardInterrupt:
