@@ -91,7 +91,8 @@ def _drain(stream, sink):
 
 
 def run_ffmpeg(cfg: PipelineConfig, args: List[str], *, label: str, duration: Optional[float],
-               on_progress: Callable = default_progress) -> None:
+               on_progress: Callable = default_progress,
+               on_status: Optional[Callable[[str], None]] = None) -> None:
     """Run one ffmpeg job. Raises AccessDeniedError / FfmpegFailedError(transient flag) / CancelledError."""
     cmd = [cfg.tools.ffmpeg, "-hide_banner", "-loglevel", "warning", "-nostats", "-stats_period", "1", "-progress", "pipe:1", "-y", *args]
     if cfg.debug:
@@ -103,8 +104,25 @@ def run_ffmpeg(cfg: PipelineConfig, args: List[str], *, label: str, duration: Op
                             text=True, encoding="utf-8", errors="replace", creationflags=flags)
     lines: "queue.Queue[Optional[str]]" = queue.Queue()
     err_tail: List[str] = []
+    diagnostic_pattern = re.compile(
+        r"(error|warning|failed|denied|timed out|timeout|http|tls|ssl|connection|"
+        r"invalid data|cannot|could not|refused|\\b40[134]\\b|\\b5\\d\\d\\b)", re.I,
+    )
+
+    def record_stderr(line: str) -> None:
+        message = line.rstrip()
+        if not message:
+            return
+        err_tail.append(message)
+        del err_tail[:-60]
+        # Surface actionable FFmpeg warnings/errors in the GUI activity log. Redact
+        # signed URLs and credentials before sending anything to the UI.
+        if on_status and diagnostic_pattern.search(message):
+            safe_message = redact_text(message)[:300]
+            on_status(f"FFmpeg diagnostic · {safe_message}")
+
     t1 = threading.Thread(target=_drain, args=(proc.stdout, lines.put), daemon=True)
-    t2 = threading.Thread(target=_drain, args=(proc.stderr, lambda l: (err_tail.append(l.rstrip()), err_tail.__delitem__(slice(0, -60)))), daemon=True)
+    t2 = threading.Thread(target=_drain, args=(proc.stderr, record_stderr), daemon=True)
     t1.start(); t2.start()
 
     state = {"out_us": 0, "size": 0, "speed": ""}
