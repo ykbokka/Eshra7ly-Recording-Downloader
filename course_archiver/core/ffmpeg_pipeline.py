@@ -54,6 +54,10 @@ def input_args(cfg: PipelineConfig, url: str) -> List[str]:
             a += [f"-{opt}", val]
     if http_option_supported(cfg.tools, "reconnect_on_http_error"):
         a += ["-reconnect_on_http_error", "429,500,502,503,504"]
+    # Keep-alive can avoid a new TCP/TLS handshake for every HLS segment on FFmpeg builds
+    # that expose this HTTP protocol option. Unsupported builds safely retain their defaults.
+    if http_option_supported(cfg.tools, "multiple_requests"):
+        a += ["-multiple_requests", "1"]
     return a + ["-i", url]
 
 
