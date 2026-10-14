@@ -64,15 +64,15 @@ def input_args(cfg: PipelineConfig, url: str) -> List[str]:
     if http_option_supported(cfg.tools, "reconnect_on_http_error"):
         a += ["-reconnect_on_http_error", "429,500,502,503,504"]
 
-    # Stability-first diagnostic settings: avoid persistent HTTP connections and
-    # parallel HLS segment requests while investigating premature EOF/retry loops.
-    # These can be re-enabled after confirming the CDN/server handles them correctly.
+    # Reuse HTTP connections and let HLS fetch segments on multiple connections.
+    # With thousands of short segments, opening a fresh TLS connection for every
+    # segment can destroy throughput. Capability checks keep older FFmpeg builds safe.
     if http_option_supported(cfg.tools, "multiple_requests"):
-        a += ["-multiple_requests", "0"]
+        a += ["-multiple_requests", "1"]
     if hls_option_supported(cfg.tools, "http_persistent"):
-        a += ["-http_persistent", "0"]
+        a += ["-http_persistent", "1"]
     if hls_option_supported(cfg.tools, "http_multiple"):
-        a += ["-http_multiple", "0"]
+        a += ["-http_multiple", "1"]
     return a + ["-i", url]
 
 
